@@ -144,8 +144,23 @@ function openDatabase() {
         }
       });
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onblocked = () => {
+      toast("Atualização do banco local bloqueada. Feche outras abas antigas do Flow ERP e recarregue.");
+    };
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+        toast("Nova versão carregada. Recarregando o Flow ERP.");
+        setTimeout(() => window.location.reload(), 900);
+      };
+      resolve(db);
+    };
+    request.onerror = () => {
+      dbPromise = null;
+      reject(request.error);
+    };
   });
   return dbPromise;
 }
@@ -2303,10 +2318,18 @@ function initIcons() {
   if (window.lucide) window.lucide.createIcons();
 }
 
-document.addEventListener("DOMContentLoaded", async () => {
-  await openDatabase();
+window.addEventListener("unhandledrejection", (event) => {
+  console.error(event.reason);
+  toast("Não foi possível concluir a ação. Recarregue a página e tente novamente.");
+});
+
+document.addEventListener("DOMContentLoaded", () => {
   bindEvents();
   initReveal();
   initIcons();
   drawChart("revenueChart", ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"], [52, 74, 68, 96, 88, 112], [34, 42, 46, 58, 52, 66]);
+  openDatabase().catch((error) => {
+    console.error(error);
+    toast("Não foi possível abrir o banco local. Recarregue o Flow ERP.");
+  });
 });
