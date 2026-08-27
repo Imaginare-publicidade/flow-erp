@@ -1,0 +1,1466 @@
+const DB_NAME = "FlowERPDatabase";
+const DB_VERSION = 2;
+const stores = [
+  "users",
+  "companies",
+  "preRegistrations",
+  "clients",
+  "employees",
+  "financial",
+  "sales",
+  "inventory",
+  "tasks",
+  "documents",
+  "employeeFiles",
+  "documentFolders",
+  "permissions",
+  "logs",
+  "consents",
+  "privacyRequests"
+];
+
+const sessionKey = "flow.erp.session";
+let dbPromise;
+let appState = {
+  currentUser: null,
+  currentCompany: null,
+  currentModule: "dashboard"
+};
+
+const moduleInfo = {
+  dashboard: { title: "Tenha uma excelente gestão hoje." },
+  financial: { title: "Financeiro" },
+  sales: { title: "Vendas" },
+  clients: { title: "Clientes" },
+  employees: { title: "Funcionários" },
+  inventory: { title: "Estoque" },
+  tasks: { title: "Tarefas" },
+  documents: { title: "Documentos" },
+  reports: { title: "Relatórios" },
+  settings: { title: "Configurações da empresa" }
+};
+
+const policies = {
+  privacy: {
+    title: "Política de Privacidade",
+    body: `
+      <p>A Flow ERP utiliza dados pessoais informados nos formulários para contato comercial, criação de conta, suporte à implantação e evolução da experiência de plataforma.</p>
+      <p>Esta interface registra consentimento, data e hora, finalidade declarada e origem do envio em banco local IndexedDB para demonstrar a estrutura que pode ser conectada a uma API real.</p>
+    `
+  },
+  terms: {
+    title: "Termos de Uso",
+    body: `
+      <p>Este ambiente demonstra o funcionamento inicial da Flow ERP. A utilização definitiva da plataforma depende de backend, contrato, implantação, perfis de acesso e políticas operacionais da empresa contratante.</p>
+      <p>As áreas de autenticação, permissões, sessão e recuperação de senha estão preparadas para integração futura com serviços de identidade.</p>
+    `
+  },
+  cookies: {
+    title: "Política de Cookies",
+    body: `
+      <p>A experiência prevê gerenciamento de cookies para preferências, métricas operacionais e recursos necessários de sessão. Nenhum cookie de publicidade é ativado por este protótipo.</p>
+      <p>O gerenciamento poderá ser conectado a uma central de preferências antes da entrada em produção.</p>
+    `
+  },
+  central: {
+    title: "Central de Privacidade",
+    body: `
+      <p>A estrutura da Central de Privacidade contempla consentimento, revogação, solicitação de acesso, correção cadastral, exclusão de dados, gerenciamento de cookies e registro da finalidade do tratamento.</p>
+      <ul>
+        <li>Finalidade: pré-cadastro, criação de conta e contato sobre a plataforma Flow ERP.</li>
+        <li>Registro: data, hora, texto aceito e origem do consentimento.</li>
+        <li>Solicitações: acesso, alteração, revogação ou exclusão ficam salvas no banco local para atendimento posterior.</li>
+      </ul>
+    `
+  }
+};
+
+const validators = {
+  required(value) {
+    return String(value || "").trim().length > 0;
+  },
+  email(value) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+  },
+  phone(value) {
+    const digits = String(value || "").replace(/\D/g, "");
+    return digits.length >= 10 && digits.length <= 11;
+  },
+  cpf(value) {
+    const cpf = String(value || "").replace(/\D/g, "");
+    if (cpf.length !== 11 || /^(\d)\1+$/.test(cpf)) return false;
+    const calc = (base) => {
+      const sum = base.split("").reduce((acc, digit, index) => acc + Number(digit) * (base.length + 1 - index), 0);
+      const rest = (sum * 10) % 11;
+      return rest === 10 ? 0 : rest;
+    };
+    return cpf.endsWith(`${calc(cpf.slice(0, 9))}${calc(cpf.slice(0, 10))}`);
+  },
+  password(value) {
+    return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(String(value || ""));
+  },
+  cnpj(value) {
+    const cnpj = String(value || "").replace(/\D/g, "");
+    if (cnpj.length !== 14 || /^(\d)\1+$/.test(cnpj)) return false;
+    const calc = (base) => {
+      const weights = base.length === 12
+        ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+        : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+      const sum = base.split("").reduce((acc, digit, index) => acc + Number(digit) * weights[index], 0);
+      const rest = sum % 11;
+      return rest < 2 ? 0 : 11 - rest;
+    };
+    return cnpj.endsWith(`${calc(cnpj.slice(0, 12))}${calc(cnpj.slice(0, 13))}`);
+  }
+};
+
+const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+const number = new Intl.NumberFormat("pt-BR");
+
+function requestToPromise(request) {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function openDatabase() {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      stores.forEach((storeName) => {
+        if (!db.objectStoreNames.contains(storeName)) {
+          db.createObjectStore(storeName, { keyPath: "id" });
+        }
+      });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  return dbPromise;
+}
+
+const repository = {
+  async all(storeName) {
+    const db = await openDatabase();
+    return requestToPromise(db.transaction(storeName, "readonly").objectStore(storeName).getAll());
+  },
+  async get(storeName, id) {
+    const db = await openDatabase();
+    return requestToPromise(db.transaction(storeName, "readonly").objectStore(storeName).get(id));
+  },
+  async add(storeName, record) {
+    const db = await openDatabase();
+    const value = {
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      ...record
+    };
+    await requestToPromise(db.transaction(storeName, "readwrite").objectStore(storeName).add(value));
+    return value;
+  },
+  async put(storeName, record) {
+    const db = await openDatabase();
+    const value = { ...record, updatedAt: new Date().toISOString() };
+    await requestToPromise(db.transaction(storeName, "readwrite").objectStore(storeName).put(value));
+    return value;
+  },
+  async remove(storeName, id) {
+    const db = await openDatabase();
+    await requestToPromise(db.transaction(storeName, "readwrite").objectStore(storeName).delete(id));
+  },
+  async findBy(storeName, field, value) {
+    const records = await this.all(storeName);
+    return records.find((record) => record[field] === value);
+  }
+};
+
+function money(value) {
+  return brl.format(Number(value || 0));
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function collectForm(form) {
+  return Object.fromEntries(new FormData(form).entries());
+}
+
+function markValidity(form, errors) {
+  form.querySelectorAll("input, select, textarea").forEach((field) => {
+    field.classList.toggle("invalid", errors.includes(field.name));
+  });
+}
+
+function showMessage(formName, message, type) {
+  const target = document.querySelector(`[data-form-message="${formName}"]`);
+  if (!target) return;
+  target.textContent = message;
+  target.className = `form-message ${type}`;
+}
+
+function moduleMessage(message, type = "success") {
+  const target = document.querySelector("[data-module-message]");
+  if (target) {
+    target.textContent = message;
+    target.className = `module-message ${type}`;
+  }
+}
+
+function toast(message) {
+  let el = document.querySelector(".toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.className = "toast";
+    document.body.appendChild(el);
+  }
+  el.textContent = message;
+  el.classList.add("show");
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => el.classList.remove("show"), 2600);
+}
+
+async function hashPassword(value) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function ensureDemoData(companyId) {
+  const [clients, employees, financial, sales, inventory, tasks, documents, documentFolders] = await Promise.all([
+    repository.all("clients"),
+    repository.all("employees"),
+    repository.all("financial"),
+    repository.all("sales"),
+    repository.all("inventory"),
+    repository.all("tasks"),
+    repository.all("documents"),
+    repository.all("documentFolders")
+  ]);
+  if (!documentFolders.some((record) => record.companyId === companyId)) {
+    await Promise.all([
+      repository.add("documentFolders", { companyId, name: "Geral" }),
+      repository.add("documentFolders", { companyId, name: "Contratos" }),
+      repository.add("documentFolders", { companyId, name: "Faturas" })
+    ]);
+  }
+  const hasAny = [clients, employees, financial, sales, inventory, tasks, documents]
+    .some((records) => records.some((record) => record.companyId === companyId));
+  if (hasAny) return;
+
+  await Promise.all([
+    repository.add("clients", { companyId, name: "Cliente Modelo", email: "compras@clientemodelo.com.br", phone: "11988887777", city: "São Paulo", status: "Ativo" }),
+    repository.add("employees", { companyId, name: "Ana Ribeiro", department: "Financeiro", role: "Analista", email: "ana@empresa.com.br", status: "Ativo" }),
+    repository.add("financial", { companyId, type: "Receita", description: "Contrato ERP mensal", category: "Assinatura", amount: 428320, dueDate: "2026-08-27", status: "Recebido" }),
+    repository.add("financial", { companyId, type: "Despesa", description: "Operação e equipe", category: "Administrativo", amount: 156980, dueDate: "2026-08-27", status: "Pago" }),
+    repository.add("sales", { companyId, client: "Cliente Modelo", opportunity: "Implantação ERP", value: 84000, stage: "Proposta", owner: "Marina" }),
+    repository.add("inventory", { companyId, sku: "FLOW-SRV", product: "Serviço de implantação", quantity: 80, minQuantity: 15, location: "Operações" }),
+    repository.add("tasks", { companyId, title: "Revisar fechamento financeiro", owner: "Marina", dueDate: "2026-08-29", priority: "Alta", status: "Pendente" }),
+    repository.add("documents", { companyId, name: "Contrato de implantação", type: "Contrato", owner: "Jurídico", status: "Em revisão", reference: "DOC-001" })
+  ]);
+}
+
+async function getContext() {
+  const session = JSON.parse(localStorage.getItem(sessionKey) || "null");
+  if (session?.userId && session?.companyId) {
+    const [user, company] = await Promise.all([
+      repository.get("users", session.userId),
+      repository.get("companies", session.companyId)
+    ]);
+    if (user && company) {
+      appState.currentUser = user;
+      appState.currentCompany = company;
+      await ensureDemoData(company.id);
+      return appState;
+    }
+  }
+
+  const existingCompany = (await repository.all("companies"))[0];
+  const company = existingCompany || await repository.add("companies", {
+    name: "Empresa Demonstração",
+    tradeName: "Flow Demo",
+    cnpj: "11222333000181",
+    email: "contato@empresa.com.br",
+    phone: "11987654321",
+    segment: "Tecnologia",
+    employeesRange: "11 a 50",
+    city: "São Paulo",
+    state: "SP",
+    address: "Avenida Paulista, 1000",
+    responsible: "Marina Costa",
+    responsibleRole: "Diretora"
+  });
+  const users = await repository.all("users");
+  const user = users.find((item) => item.companyId === company.id) || await repository.add("users", {
+    fullName: "Marina Costa",
+    email: "marina@empresa.com.br",
+    phone: "11987654321",
+    companyId: company.id,
+    passwordHash: await hashPassword("Flowerp1"),
+    permissionProfile: "admin"
+  });
+  localStorage.setItem(sessionKey, JSON.stringify({ userId: user.id, companyId: company.id }));
+  appState.currentUser = user;
+  appState.currentCompany = company;
+  await ensureDemoData(company.id);
+  return appState;
+}
+
+function companyFilter(records) {
+  return records.filter((record) => record.companyId === appState.currentCompany?.id);
+}
+
+async function dashboardData() {
+  const [clients, employees, financial, tasks, inventory, sales, docs, consents, employeeFiles, documentFolders] = await Promise.all([
+    repository.all("clients"),
+    repository.all("employees"),
+    repository.all("financial"),
+    repository.all("tasks"),
+    repository.all("inventory"),
+    repository.all("sales"),
+    repository.all("documents"),
+    repository.all("consents"),
+    repository.all("employeeFiles"),
+    repository.all("documentFolders")
+  ]);
+  const scopedFinancial = companyFilter(financial);
+  const revenue = scopedFinancial.filter((item) => item.type === "Receita").reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const expenses = scopedFinancial.filter((item) => item.type === "Despesa").reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  return {
+    clients: companyFilter(clients),
+    employees: companyFilter(employees),
+    financial: scopedFinancial,
+    tasks: companyFilter(tasks),
+    inventory: companyFilter(inventory),
+    sales: companyFilter(sales),
+    documents: companyFilter(docs),
+    consents: companyFilter(consents),
+    employeeFiles: companyFilter(employeeFiles),
+    documentFolders: companyFilter(documentFolders),
+    revenue,
+    expenses,
+    profit: revenue - expenses
+  };
+}
+
+function setTopbar() {
+  document.querySelector("[data-user-name]").textContent = (appState.currentUser?.fullName || "Usuário").split(" ")[0];
+  document.querySelector("[data-module-title]").textContent = moduleInfo[appState.currentModule]?.title || "Flow ERP";
+}
+
+async function renderKpis() {
+  const data = await dashboardData();
+  document.querySelector("[data-dashboard-kpis]").innerHTML = `
+    <article><span>Faturamento</span><strong>${money(data.revenue)}</strong><small>${data.financial.length} lançamentos</small></article>
+    <article><span>Despesas</span><strong>${money(data.expenses)}</strong><small>controle operacional</small></article>
+    <article><span>Lucro</span><strong>${money(data.profit)}</strong><small>receita - despesa</small></article>
+    <article><span>Clientes ativos</span><strong>${number.format(data.clients.length)}</strong><small>base comercial</small></article>
+    <article><span>Funcionários</span><strong>${number.format(data.employees.length)}</strong><small>equipe cadastrada</small></article>
+    <article><span>Tarefas pendentes</span><strong>${number.format(data.tasks.filter((task) => task.status !== "Concluída").length)}</strong><small>rotina em aberto</small></article>
+  `;
+}
+
+function statusClass(value) {
+  if (["Pendente", "Em negociação", "Em revisão", "Baixo estoque", "Atrasado"].includes(value)) return "warn";
+  if (["Proposta", "Em andamento", "Contato feito", "Em implantação"].includes(value)) return "info";
+  return "";
+}
+
+function emptyState(text) {
+  return `<div class="empty-state"><div><i data-lucide="database"></i><p>${text}</p></div></div>`;
+}
+
+function table(records, columns, storeName) {
+  if (!records.length) return emptyState("Nenhum registro salvo ainda. Preencha o formulário ao lado para gravar no banco local.");
+  return `
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr>${columns.map((col) => `<th>${col.label}</th>`).join("")}<th>Ações</th></tr></thead>
+        <tbody>
+          ${records.map((record) => `
+            <tr>
+              ${columns.map((col) => `<td>${col.format ? col.format(record[col.key], record) : escapeHtml(record[col.key])}</td>`).join("")}
+              <td><div class="row-actions"><button class="mini-button danger" type="button" data-delete="${storeName}" data-id="${record.id}">Excluir</button></div></td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function formField(label, name, type = "text", value = "", attrs = "") {
+  return `<label>${label}<input name="${name}" type="${type}" value="${escapeHtml(value)}" ${attrs}></label>`;
+}
+
+function selectField(label, name, options, value = "") {
+  return `
+    <label>${label}
+      <select name="${name}" required>
+        <option value="">Selecione</option>
+        ${options.map((option) => `<option ${option === value ? "selected" : ""}>${option}</option>`).join("")}
+      </select>
+    </label>
+  `;
+}
+
+function fileField(label, name, multiple = false) {
+  return `<label>${label}<input name="${name}" type="file" ${multiple ? "multiple" : ""}></label>`;
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({
+      fileName: file.name,
+      mimeType: file.type || "application/octet-stream",
+      size: file.size,
+      dataUrl: reader.result
+    });
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function filesFromInput(input) {
+  if (!input?.files?.length) return [];
+  return Promise.all([...input.files].map(readFileAsDataUrl));
+}
+
+function fileActions(file) {
+  return `
+    <div class="row-actions">
+      <button class="mini-button" type="button" data-preview-file="${file.id}">Ver</button>
+      <button class="mini-button" type="button" data-download-file="${file.id}">Baixar</button>
+      <button class="mini-button danger" type="button" data-delete-file="${file.storeName}" data-id="${file.id}">Excluir</button>
+    </div>
+  `;
+}
+
+function dashboardModule(data) {
+  const pendingTasks = data.tasks.filter((task) => task.status !== "Concluída").slice(0, 4);
+  return `
+    <div class="erp-chart">
+      <div class="panel-head"><span>Resultado operacional</span><small>dados do banco local</small></div>
+      <canvas id="erpChart" width="780" height="300" aria-label="Gráfico interativo de resultado operacional"></canvas>
+      <div class="dashboard-actions">
+        <button class="quick-action" type="button" data-module-shortcut="financial"><i data-lucide="plus-circle"></i>Novo financeiro</button>
+        <button class="quick-action" type="button" data-module-shortcut="clients"><i data-lucide="user-plus"></i>Novo cliente</button>
+        <button class="quick-action" type="button" data-module-shortcut="tasks"><i data-lucide="list-plus"></i>Nova tarefa</button>
+        <button class="quick-action" type="button" data-module-shortcut="settings"><i data-lucide="building-2"></i>Minha empresa</button>
+      </div>
+    </div>
+    <aside class="erp-side-panel">
+      <h2>Rotina do dia</h2>
+      ${pendingTasks.length ? pendingTasks.map((task) => `<p><strong>${escapeHtml(task.title)}</strong><span>${escapeHtml(task.status)}</span></p>`).join("") : "<p><strong>Nenhuma tarefa pendente</strong><span>Operação em dia</span></p>"}
+      <p><strong>Oportunidades</strong><span>${data.sales.length} no CRM</span></p>
+      <p><strong>Documentos</strong><span>${data.documents.length} cadastrados</span></p>
+      <button class="secondary-button full" type="button" data-logout><i data-lucide="log-out"></i>Sair do demo</button>
+    </aside>
+  `;
+}
+
+function financialModule(records) {
+  return `
+    <div class="module-grid">
+      <section class="module-panel">
+        <h2>Novo lançamento</h2>
+        <p>Receitas e despesas salvas aqui alimentam automaticamente o dashboard e os relatórios.</p>
+        <form class="module-form" data-module-form="financial" novalidate>
+          <div class="form-grid">
+            ${selectField("Tipo", "type", ["Receita", "Despesa"])}
+            ${formField("Valor", "amount", "number", "", "min='0' step='0.01' required")}
+            ${formField("Descrição", "description", "text", "", "required")}
+            ${formField("Categoria", "category", "text", "", "required")}
+            ${formField("Vencimento", "dueDate", "date", "", "required")}
+            ${selectField("Status", "status", ["Aberto", "Recebido", "Pago", "Atrasado"])}
+          </div>
+          <div class="module-message" data-module-message></div>
+          <button class="primary-button full" type="submit"><i data-lucide="save"></i>Salvar lançamento</button>
+        </form>
+      </section>
+      <section class="data-panel">
+        <h2>Lançamentos financeiros</h2>
+        ${table(records, [
+          { label: "Tipo", key: "type" },
+          { label: "Descrição", key: "description" },
+          { label: "Categoria", key: "category" },
+          { label: "Valor", key: "amount", format: (value) => money(value) },
+          { label: "Status", key: "status", format: (value) => `<span class="status-pill ${statusClass(value)}">${escapeHtml(value)}</span>` }
+        ], "financial")}
+      </section>
+    </div>
+  `;
+}
+
+function salesModule(records) {
+  return `
+    <div class="module-grid">
+      <section class="module-panel">
+        <h2>Nova oportunidade</h2>
+        <p>Registre negociações, responsáveis e valores para acompanhar o pipeline comercial.</p>
+        <form class="module-form" data-module-form="sales" novalidate>
+          ${formField("Cliente", "client", "text", "", "required")}
+          ${formField("Oportunidade", "opportunity", "text", "", "required")}
+          <div class="form-grid">
+            ${formField("Valor estimado", "value", "number", "", "min='0' step='0.01' required")}
+            ${selectField("Etapa", "stage", ["Contato feito", "Proposta", "Em negociação", "Ganho", "Perdido"])}
+          </div>
+          ${formField("Responsável", "owner", "text", appState.currentUser?.fullName || "", "required")}
+          <div class="module-message" data-module-message></div>
+          <button class="primary-button full" type="submit"><i data-lucide="save"></i>Salvar oportunidade</button>
+        </form>
+      </section>
+      <section class="data-panel">
+        <h2>Pipeline de vendas</h2>
+        ${table(records, [
+          { label: "Cliente", key: "client" },
+          { label: "Oportunidade", key: "opportunity" },
+          { label: "Valor", key: "value", format: (value) => money(value) },
+          { label: "Etapa", key: "stage", format: (value) => `<span class="status-pill ${statusClass(value)}">${escapeHtml(value)}</span>` },
+          { label: "Responsável", key: "owner" }
+        ], "sales")}
+      </section>
+    </div>
+  `;
+}
+
+function clientsModule(records) {
+  return `
+    <div class="module-grid">
+      <section class="module-panel">
+        <h2>Novo cliente</h2>
+        <p>Cadastre clientes para conectar vendas, financeiro, documentos e atendimento.</p>
+        <form class="module-form" data-module-form="clients" novalidate>
+          ${formField("Nome/Razão social", "name", "text", "", "required")}
+          ${formField("E-mail", "email", "email", "", "required")}
+          <div class="form-grid">
+            ${formField("Telefone", "phone", "tel", "", "required")}
+            ${formField("Cidade", "city", "text", "", "required")}
+          </div>
+          ${selectField("Status", "status", ["Ativo", "Em implantação", "Inativo"])}
+          <div class="module-message" data-module-message></div>
+          <button class="primary-button full" type="submit"><i data-lucide="save"></i>Salvar cliente</button>
+        </form>
+      </section>
+      <section class="data-panel">
+        <h2>Clientes cadastrados</h2>
+        ${table(records, [
+          { label: "Cliente", key: "name" },
+          { label: "E-mail", key: "email" },
+          { label: "Telefone", key: "phone" },
+          { label: "Cidade", key: "city" },
+          { label: "Status", key: "status", format: (value) => `<span class="status-pill ${statusClass(value)}">${escapeHtml(value)}</span>` }
+        ], "clients")}
+      </section>
+    </div>
+  `;
+}
+
+function employeesModule(records, files) {
+  const fileRows = files.map((file) => ({
+    ...file,
+    storeName: "employeeFiles",
+    employeeName: records.find((employee) => employee.id === file.employeeId)?.name || "Funcionário"
+  }));
+  return `
+    <div class="module-grid">
+      <section class="module-panel">
+        <h2>Cadastro de funcionário</h2>
+        <p>Organize dados do colaborador, vínculo, documentos e desligamento em uma única área.</p>
+        <form class="module-form" data-module-form="employees" enctype="multipart/form-data" novalidate>
+          ${formField("Nome completo", "name", "text", "", "required")}
+          <div class="form-grid">
+            ${formField("CPF", "cpf", "text", "", "required")}
+            ${formField("E-mail", "email", "email", "", "required")}
+            ${formField("Telefone", "phone", "tel", "")}
+            ${formField("Departamento", "department", "text", "", "required")}
+            ${formField("Cargo", "role", "text", "", "required")}
+            ${formField("Salário", "salary", "number", "", "min='0' step='0.01'")}
+            ${formField("Data de admissão", "admissionDate", "date", "", "required")}
+            ${formField("Data de demissão", "terminationDate", "date", "")}
+          </div>
+          ${selectField("Status", "status", ["Ativo", "Férias", "Afastado", "Desligado"])}
+          ${fileField("Anexar documentos do funcionário", "employeeDocuments", true)}
+          <div class="module-message" data-module-message></div>
+          <button class="primary-button full" type="submit"><i data-lucide="save"></i>Salvar funcionário</button>
+        </form>
+      </section>
+      <section class="data-panel">
+        <h2>Equipe</h2>
+        ${records.length ? `
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Nome</th><th>CPF</th><th>Cargo</th><th>Admissão</th><th>Demissão</th><th>Status</th><th>Ações</th></tr></thead>
+              <tbody>
+                ${records.map((employee) => `
+                  <tr>
+                    <td>${escapeHtml(employee.name)}</td>
+                    <td>${escapeHtml(employee.cpf || "")}</td>
+                    <td>${escapeHtml(employee.role || "")}</td>
+                    <td>${escapeHtml(employee.admissionDate || "")}</td>
+                    <td>${escapeHtml(employee.terminationDate || "")}</td>
+                    <td><span class="status-pill ${statusClass(employee.status)}">${escapeHtml(employee.status)}</span></td>
+                    <td>
+                      <div class="row-actions">
+                        <button class="mini-button" type="button" data-terminate-employee="${employee.id}">Desligar</button>
+                        <button class="mini-button danger" type="button" data-delete="employees" data-id="${employee.id}">Excluir</button>
+                      </div>
+                    </td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        ` : emptyState("Nenhum funcionário cadastrado ainda.")}
+        <h2 class="subsection-title">Documentos dos funcionários</h2>
+        ${fileRows.length ? `
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Funcionário</th><th>Arquivo</th><th>Tipo</th><th>Tamanho</th><th>Ações</th></tr></thead>
+              <tbody>
+                ${fileRows.map((file) => `
+                  <tr>
+                    <td>${escapeHtml(file.employeeName)}</td>
+                    <td>${escapeHtml(file.fileName)}</td>
+                    <td>${escapeHtml(file.mimeType)}</td>
+                    <td>${number.format(Math.round(Number(file.size || 0) / 1024))} KB</td>
+                    <td>${fileActions(file)}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        ` : emptyState("Anexe documentos no cadastro do funcionário para consultar e baixar depois.")}
+      </section>
+    </div>
+  `;
+}
+
+function inventoryModule(records) {
+  return `
+    <div class="module-grid">
+      <section class="module-panel">
+        <h2>Novo item de estoque</h2>
+        <p>Controle produtos, quantidades mínimas e localização operacional.</p>
+        <form class="module-form" data-module-form="inventory" novalidate>
+          <div class="form-grid">
+            ${formField("SKU", "sku", "text", "", "required")}
+            ${formField("Produto", "product", "text", "", "required")}
+            ${formField("Quantidade", "quantity", "number", "", "min='0' required")}
+            ${formField("Estoque mínimo", "minQuantity", "number", "", "min='0' required")}
+          </div>
+          ${formField("Localização", "location", "text", "", "required")}
+          <div class="module-message" data-module-message></div>
+          <button class="primary-button full" type="submit"><i data-lucide="save"></i>Salvar item</button>
+        </form>
+      </section>
+      <section class="data-panel">
+        <h2>Produtos e movimentações</h2>
+        ${table(records.map((item) => ({ ...item, stockStatus: Number(item.quantity) <= Number(item.minQuantity) ? "Baixo estoque" : "Disponível" })), [
+          { label: "SKU", key: "sku" },
+          { label: "Produto", key: "product" },
+          { label: "Quantidade", key: "quantity" },
+          { label: "Mínimo", key: "minQuantity" },
+          { label: "Status", key: "stockStatus", format: (value) => `<span class="status-pill ${statusClass(value)}">${escapeHtml(value)}</span>` }
+        ], "inventory")}
+      </section>
+    </div>
+  `;
+}
+
+function tasksModule(records) {
+  return `
+    <div class="module-grid">
+      <section class="module-panel">
+        <h2>Nova tarefa</h2>
+        <p>Crie atividades com prioridade, prazo e responsável para acompanhar a execução.</p>
+        <form class="module-form" data-module-form="tasks" novalidate>
+          ${formField("Título", "title", "text", "", "required")}
+          <div class="form-grid">
+            ${formField("Responsável", "owner", "text", appState.currentUser?.fullName || "", "required")}
+            ${formField("Prazo", "dueDate", "date", "", "required")}
+            ${selectField("Prioridade", "priority", ["Baixa", "Média", "Alta"])}
+            ${selectField("Status", "status", ["Pendente", "Em andamento", "Concluída"])}
+          </div>
+          <div class="module-message" data-module-message></div>
+          <button class="primary-button full" type="submit"><i data-lucide="save"></i>Salvar tarefa</button>
+        </form>
+      </section>
+      <section class="data-panel">
+        <h2>Tarefas da empresa</h2>
+        ${table(records, [
+          { label: "Tarefa", key: "title" },
+          { label: "Responsável", key: "owner" },
+          { label: "Prazo", key: "dueDate" },
+          { label: "Prioridade", key: "priority" },
+          { label: "Status", key: "status", format: (value) => `<span class="status-pill ${statusClass(value)}">${escapeHtml(value)}</span>` }
+        ], "tasks")}
+      </section>
+    </div>
+  `;
+}
+
+function documentsModule(records, folders) {
+  const folderOptions = folders.length ? folders.map((folder) => ({ label: folder.name, value: folder.id })) : [{ label: "Geral", value: "general" }];
+  const folderName = (folderId) => folders.find((folder) => folder.id === folderId)?.name || "Geral";
+  const recordsWithStore = records.map((record) => ({ ...record, storeName: "documents" }));
+  return `
+    <div class="module-grid">
+      <section class="module-panel">
+        <h2>Nova pasta</h2>
+        <p>Crie subpastas para organizar contratos, faturas, notas fiscais, políticas internas e outros arquivos.</p>
+        <form class="module-form compact-form" data-module-form="documentFolders" novalidate>
+          ${formField("Nome da pasta", "name", "text", "", "required")}
+          <button class="secondary-button full" type="submit"><i data-lucide="folder-plus"></i>Criar pasta</button>
+        </form>
+
+        <h2>Novo documento</h2>
+        <p>Suba arquivos para a pasta desejada. Depois você pode abrir no navegador ou baixar novamente.</p>
+        <form class="module-form" data-module-form="documents" enctype="multipart/form-data" novalidate>
+          ${formField("Nome do documento", "name", "text", "", "required")}
+          <div class="form-grid">
+            <label>Pasta
+              <select name="folderId" required>
+                ${folderOptions.map((folder) => `<option value="${folder.value}">${escapeHtml(folder.label)}</option>`).join("")}
+              </select>
+            </label>
+            ${selectField("Tipo", "type", ["Contrato", "Fatura", "Nota fiscal", "Relatório", "Política interna", "Documento RH", "Outros"])}
+            ${formField("Responsável", "owner", "text", "", "required")}
+            ${selectField("Status", "status", ["Ativo", "Em revisão", "Arquivado"])}
+          </div>
+          ${fileField("Anexar arquivo", "documentFile", false)}
+          <div class="module-message" data-module-message></div>
+          <button class="primary-button full" type="submit"><i data-lucide="save"></i>Salvar documento</button>
+        </form>
+      </section>
+      <section class="data-panel">
+        <h2>Biblioteca documental</h2>
+        <div class="folder-grid">
+          ${folders.length ? folders.map((folder) => `
+            <article class="folder-card">
+              <i data-lucide="folder"></i>
+              <strong>${escapeHtml(folder.name)}</strong>
+              <span>${records.filter((record) => record.folderId === folder.id).length} documentos</span>
+            </article>
+          `).join("") : `<article class="folder-card"><i data-lucide="folder"></i><strong>Geral</strong><span>Pasta padrão</span></article>`}
+        </div>
+        ${recordsWithStore.length ? `
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Pasta</th><th>Documento</th><th>Tipo</th><th>Arquivo</th><th>Status</th><th>Ações</th></tr></thead>
+              <tbody>
+                ${recordsWithStore.map((record) => `
+                  <tr>
+                    <td>${escapeHtml(folderName(record.folderId))}</td>
+                    <td>${escapeHtml(record.name)}</td>
+                    <td>${escapeHtml(record.type)}</td>
+                    <td>${escapeHtml(record.fileName || "Sem arquivo")}</td>
+                    <td><span class="status-pill ${statusClass(record.status)}">${escapeHtml(record.status)}</span></td>
+                    <td>${record.dataUrl ? fileActions(record) : `<div class="row-actions"><button class="mini-button danger" type="button" data-delete="documents" data-id="${record.id}">Excluir</button></div>`}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        ` : emptyState("Crie uma pasta e suba documentos para consultar, visualizar e baixar quando precisar.")}
+      </section>
+    </div>
+  `;
+}
+
+function reportsModule(data) {
+  const won = data.sales.filter((sale) => sale.stage === "Ganho").reduce((sum, sale) => sum + Number(sale.value || 0), 0);
+  const stockLow = data.inventory.filter((item) => Number(item.quantity) <= Number(item.minQuantity)).length;
+  return `
+    <section class="report-panel">
+      <h2>Relatório executivo</h2>
+      <p>Resumo gerado automaticamente a partir dos registros salvos no banco local da Flow ERP.</p>
+      <div class="report-metrics">
+        <article><span>Receita total</span><strong>${money(data.revenue)}</strong></article>
+        <article><span>Lucro estimado</span><strong>${money(data.profit)}</strong></article>
+        <article><span>Vendas ganhas</span><strong>${money(won)}</strong></article>
+        <article><span>Estoque crítico</span><strong>${stockLow}</strong></article>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Área</th><th>Indicador</th><th>Leitura de gestão</th></tr></thead>
+          <tbody>
+            <tr><td>Financeiro</td><td>${data.financial.length} lançamentos</td><td>Receitas e despesas alimentam o resultado operacional.</td></tr>
+            <tr><td>Comercial</td><td>${data.sales.length} oportunidades</td><td>Pipeline conectado ao cadastro de clientes e à rotina de gestão.</td></tr>
+            <tr><td>RH</td><td>${data.employees.length} funcionários</td><td>Base de equipe pronta para permissões e processos internos.</td></tr>
+            <tr><td>Operações</td><td>${data.tasks.length} tarefas</td><td>Controle de execução por prazo, responsável e prioridade.</td></tr>
+            <tr><td>Documentos</td><td>${data.documents.length} registros</td><td>Biblioteca documental preparada para organização e governança.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function settingsModule(company, privacyRequests) {
+  return `
+    <div class="settings-layout">
+      <section class="module-panel">
+        <h2>Dados da empresa</h2>
+        <p>Preencha as informações institucionais. Ao salvar, os dados ficam gravados no banco local do navegador e disponíveis no próximo acesso.</p>
+        <form class="module-form settings-form" data-module-form="settings" enctype="multipart/form-data" novalidate>
+          <div class="settings-block">
+            <h3>Identidade</h3>
+            <div class="company-logo-upload">
+              <div class="company-logo-preview">${company.logoDataUrl ? `<img src="${company.logoDataUrl}" alt="Logotipo da empresa">` : `<i data-lucide="image-plus"></i><span>Logo da empresa</span>`}</div>
+              ${fileField("Enviar logotipo da empresa", "companyLogo", false)}
+            </div>
+          </div>
+          <div class="settings-block">
+            <h3>Dados cadastrais</h3>
+            <div class="form-grid">
+              ${formField("Razão social", "name", "text", company.name || "", "required")}
+              ${formField("Nome fantasia", "tradeName", "text", company.tradeName || "")}
+              ${formField("CNPJ", "cnpj", "text", company.cnpj || "", "required")}
+              ${formField("Inscrição estadual", "stateRegistration", "text", company.stateRegistration || "")}
+              ${formField("Inscrição municipal", "cityRegistration", "text", company.cityRegistration || "")}
+              ${formField("Segmento", "segment", "text", company.segment || "", "required")}
+              ${selectField("Quantidade de colaboradores", "employeesRange", ["1 a 10", "11 a 50", "51 a 200", "201+"], company.employeesRange || "")}
+              ${formField("Regime tributário", "taxRegime", "text", company.taxRegime || "")}
+            </div>
+          </div>
+          <div class="settings-block">
+            <h3>Contato</h3>
+            <div class="form-grid">
+              ${formField("E-mail da empresa", "email", "email", company.email || "", "required")}
+              ${formField("Telefone", "phone", "tel", company.phone || "", "required")}
+              ${formField("Site", "website", "url", company.website || "")}
+              ${formField("WhatsApp", "whatsapp", "tel", company.whatsapp || "")}
+            </div>
+          </div>
+          <div class="settings-block">
+            <h3>Endereço</h3>
+            <div class="form-grid">
+              ${formField("CEP", "zipCode", "text", company.zipCode || "")}
+              ${formField("Cidade", "city", "text", company.city || "", "required")}
+              ${selectField("Estado", "state", ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"], company.state || "")}
+              ${formField("Bairro", "district", "text", company.district || "")}
+            </div>
+            <label>Endereço completo<textarea name="address" required>${escapeHtml(company.address || "")}</textarea></label>
+          </div>
+          <div class="settings-block">
+            <h3>Responsável</h3>
+            <div class="form-grid">
+              ${formField("Responsável", "responsible", "text", company.responsible || appState.currentUser?.fullName || "", "required")}
+              ${formField("Cargo do responsável", "responsibleRole", "text", company.responsibleRole || "", "required")}
+              ${formField("E-mail do responsável", "responsibleEmail", "email", company.responsibleEmail || appState.currentUser?.email || "")}
+              ${formField("Telefone do responsável", "responsiblePhone", "tel", company.responsiblePhone || "")}
+            </div>
+          </div>
+          <div class="module-message" data-module-message></div>
+          <button class="primary-button full" type="submit"><i data-lucide="save"></i>Salvar dados da empresa</button>
+        </form>
+      </section>
+      <aside class="quick-panel">
+        <h2>Central de Privacidade</h2>
+        <p>Registre solicitações LGPD para acesso, alteração, exclusão ou revogação de consentimento.</p>
+        <button class="secondary-button full" type="button" data-privacy-request="Acesso aos dados"><i data-lucide="file-search"></i>Solicitar acesso aos dados</button>
+        <button class="secondary-button full" type="button" data-privacy-request="Alteração cadastral"><i data-lucide="pencil"></i>Solicitar alteração</button>
+        <button class="secondary-button full" type="button" data-privacy-request="Exclusão de dados"><i data-lucide="trash-2"></i>Solicitar exclusão</button>
+        <button class="secondary-button full" type="button" data-privacy-request="Revogação de consentimento"><i data-lucide="shield-x"></i>Revogar consentimento</button>
+        <div class="privacy-request-list">
+          ${privacyRequests.length ? privacyRequests.map((request) => `<article><strong>${escapeHtml(request.type)}</strong><span>${escapeHtml(request.status)} • ${new Date(request.createdAt).toLocaleString("pt-BR")}</span></article>`).join("") : "<article><strong>Nenhuma solicitação</strong><span>Use os botões acima quando precisar.</span></article>"}
+        </div>
+      </aside>
+    </div>
+  `;
+}
+
+async function renderModule(module = appState.currentModule) {
+  appState.currentModule = module;
+  setTopbar();
+  document.querySelectorAll("[data-module-nav] button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.module === module);
+  });
+
+  const content = document.querySelector("[data-module-content]");
+  const data = await dashboardData();
+  await renderKpis();
+  content.classList.toggle("module-mode", module !== "dashboard");
+
+  if (module === "dashboard") content.innerHTML = dashboardModule(data);
+  if (module === "financial") content.innerHTML = financialModule(data.financial);
+  if (module === "sales") content.innerHTML = salesModule(data.sales);
+  if (module === "clients") content.innerHTML = clientsModule(data.clients);
+  if (module === "employees") content.innerHTML = employeesModule(data.employees, data.employeeFiles);
+  if (module === "inventory") content.innerHTML = inventoryModule(data.inventory);
+  if (module === "tasks") content.innerHTML = tasksModule(data.tasks);
+  if (module === "documents") content.innerHTML = documentsModule(data.documents, data.documentFolders);
+  if (module === "reports") content.innerHTML = reportsModule(data);
+  if (module === "settings") {
+    const requests = companyFilter(await repository.all("privacyRequests"));
+    content.innerHTML = settingsModule(appState.currentCompany, requests);
+  }
+
+  initIcons();
+  if (module === "dashboard") {
+    drawChart(
+      "erpChart",
+      ["Receita", "Despesa", "Lucro", "Clientes", "Tarefas"],
+      [data.revenue / 1000, data.expenses / 1000, Math.max(data.profit, 0) / 1000, data.clients.length * 12, data.tasks.length * 10],
+      [data.expenses / 1000, data.expenses / 1000, 0, data.employees.length * 8, data.documents.length * 7]
+    );
+  }
+}
+
+async function setView(name) {
+  document.querySelectorAll("[data-view]").forEach((view) => {
+    view.classList.toggle("active", view.dataset.view === name);
+  });
+  document.body.classList.toggle("auth-mode", name === "login" || name === "signup");
+  document.body.classList.toggle("dashboard-mode", name === "dashboard");
+  if (name === "dashboard") {
+    await getContext();
+    await renderModule(appState.currentModule || "dashboard");
+  }
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function validateLead(data) {
+  const required = ["fullName", "email", "phone", "company", "cnpj", "role", "employees", "segment", "city", "state"];
+  const errors = required.filter((field) => !validators.required(data[field]));
+  if (!validators.email(data.email)) errors.push("email");
+  if (!validators.phone(data.phone)) errors.push("phone");
+  if (!validators.cnpj(data.cnpj)) errors.push("cnpj");
+  if (!data.consent) errors.push("consent");
+  return [...new Set(errors)];
+}
+
+function validateSignup(data) {
+  const required = ["fullName", "email", "phone", "company", "cnpj", "password", "confirmPassword"];
+  const errors = required.filter((field) => !validators.required(data[field]));
+  if (!validators.email(data.email)) errors.push("email");
+  if (!validators.phone(data.phone)) errors.push("phone");
+  if (!validators.cnpj(data.cnpj)) errors.push("cnpj");
+  if (!validators.password(data.password)) errors.push("password");
+  if (data.password !== data.confirmPassword) errors.push("confirmPassword");
+  if (!data.terms) errors.push("terms");
+  return [...new Set(errors)];
+}
+
+async function handleLead(form) {
+  const data = collectForm(form);
+  const errors = validateLead(data);
+  markValidity(form, errors);
+  if (errors.length) {
+    showMessage("lead", "Revise os campos destacados e aceite o consentimento LGPD para continuar.", "error");
+    return;
+  }
+
+  const consent = await repository.add("consents", {
+    ownerEmail: data.email,
+    companyId: null,
+    source: "pre-cadastro",
+    acceptedText: "Li e concordo com a Política de Privacidade e estou ciente do tratamento dos meus dados pessoais para as finalidades apresentadas.",
+    purpose: data.purpose,
+    consentedAt: new Date().toISOString(),
+    revocationAvailable: true,
+    accessRequestAvailable: true,
+    deletionRequestAvailable: true,
+    correctionRequestAvailable: true,
+    cookieManagementAvailable: true
+  });
+
+  await repository.add("preRegistrations", {
+    ...data,
+    consentId: consent.id,
+    storageTarget: "IndexedDB.preRegistrations",
+    readyForApiPersistence: true
+  });
+
+  showMessage("lead", "Pré-cadastro realizado com sucesso! Seus dados foram salvos no banco local e estão prontos para integração com backend.", "success");
+  form.reset();
+}
+
+async function handleSignup(form) {
+  const data = collectForm(form);
+  const errors = validateSignup(data);
+  markValidity(form, errors);
+  if (errors.length) {
+    showMessage("signup", "Confira os campos obrigatórios. A senha precisa ter 8 caracteres, maiúscula, minúscula e número.", "error");
+    return;
+  }
+
+  const existing = await repository.findBy("users", "email", data.email);
+  if (existing) {
+    showMessage("signup", "Este e-mail já possui conta. Use a tela de login para acessar.", "error");
+    return;
+  }
+
+  const company = await repository.add("companies", {
+    name: data.company,
+    tradeName: data.company,
+    cnpj: data.cnpj,
+    email: data.email,
+    phone: data.phone,
+    responsible: data.fullName
+  });
+
+  const user = await repository.add("users", {
+    fullName: data.fullName,
+    email: data.email,
+    phone: data.phone,
+    companyId: company.id,
+    passwordHash: await hashPassword(data.password),
+    authProviderReady: true,
+    twoFactorReady: true,
+    sessionControlReady: true,
+    permissionProfile: "admin"
+  });
+
+  await repository.add("permissions", {
+    companyId: company.id,
+    userId: user.id,
+    profile: "admin",
+    modules: Object.keys(moduleInfo)
+  });
+  await repository.add("logs", { companyId: company.id, userId: user.id, type: "signup", detail: "Conta criada na experiência Flow ERP" });
+  localStorage.setItem(sessionKey, JSON.stringify({ userId: user.id, companyId: company.id }));
+  appState.currentUser = user;
+  appState.currentCompany = company;
+  await ensureDemoData(company.id);
+
+  showMessage("signup", "Conta criada e salva no banco local. Abrindo o dashboard...", "success");
+  setTimeout(() => setView("dashboard"), 700);
+}
+
+async function handleLogin(form) {
+  const data = collectForm(form);
+  const errors = [];
+  if (!validators.email(data.email)) errors.push("email");
+  if (!validators.required(data.password)) errors.push("password");
+  markValidity(form, errors);
+  if (errors.length) {
+    showMessage("login", "Informe e-mail válido e senha para acessar.", "error");
+    return;
+  }
+
+  let user = await repository.findBy("users", "email", data.email);
+  if (!user) {
+    const company = await repository.add("companies", {
+      name: "Empresa criada pelo login demo",
+      tradeName: "Flow Demo",
+      cnpj: "11222333000181",
+      email: data.email,
+      responsible: data.email.split("@")[0]
+    });
+    user = await repository.add("users", {
+      fullName: data.email.split("@")[0],
+      email: data.email,
+      companyId: company.id,
+      passwordHash: await hashPassword(data.password),
+      permissionProfile: "admin"
+    });
+    await ensureDemoData(company.id);
+  } else if (user.passwordHash !== await hashPassword(data.password)) {
+    showMessage("login", "Senha inválida para este usuário.", "error");
+    return;
+  }
+
+  const company = await repository.get("companies", user.companyId);
+  localStorage.setItem(sessionKey, JSON.stringify({ userId: user.id, companyId: company.id }));
+  appState.currentUser = user;
+  appState.currentCompany = company;
+  await repository.add("logs", { companyId: company.id, userId: user.id, type: "login", detail: "Sessão iniciada" });
+  showMessage("login", "Acesso validado. Abrindo o dashboard...", "success");
+  setTimeout(() => setView("dashboard"), 500);
+}
+
+async function handleModuleForm(form) {
+  const module = form.dataset.moduleForm;
+  const data = collectForm(form);
+  const required = [...form.querySelectorAll("[required]")].map((field) => field.name);
+  const errors = required.filter((field) => !validators.required(data[field]));
+  if (data.email && !validators.email(data.email)) errors.push("email");
+  if (data.phone && !validators.phone(data.phone)) errors.push("phone");
+  if (data.cnpj && !validators.cnpj(data.cnpj)) errors.push("cnpj");
+  if (data.cpf && !validators.cpf(data.cpf)) errors.push("cpf");
+  markValidity(form, [...new Set(errors)]);
+  if (errors.length) {
+    moduleMessage("Revise os campos destacados antes de salvar.", "error");
+    return;
+  }
+
+  if (module === "documentFolders") {
+    await repository.add("documentFolders", {
+      name: data.name,
+      companyId: appState.currentCompany.id,
+      userId: appState.currentUser.id
+    });
+    await repository.add("logs", { companyId: appState.currentCompany.id, userId: appState.currentUser.id, type: "folder_create", detail: data.name });
+    toast("Pasta criada.");
+    await renderModule("documents");
+    return;
+  }
+
+  if (module === "settings") {
+    const logo = (await filesFromInput(form.elements.companyLogo))[0];
+    delete data.companyLogo;
+    appState.currentCompany = await repository.put("companies", {
+      ...appState.currentCompany,
+      ...data,
+      ...(logo ? {
+        logoDataUrl: logo.dataUrl,
+        logoFileName: logo.fileName,
+        logoMimeType: logo.mimeType
+      } : {})
+    });
+    await repository.add("logs", { companyId: appState.currentCompany.id, userId: appState.currentUser.id, type: "company_update", detail: "Dados da empresa atualizados" });
+    toast("Configurações salvas.");
+    await renderModule("settings");
+    await renderKpis();
+    return;
+  }
+
+  if (module === "employees") {
+    const employeeDocs = await filesFromInput(form.elements.employeeDocuments);
+    delete data.employeeDocuments;
+    const employee = await repository.add("employees", {
+      ...data,
+      companyId: appState.currentCompany.id,
+      userId: appState.currentUser.id
+    });
+    await Promise.all(employeeDocs.map((file) => repository.add("employeeFiles", {
+      ...file,
+      employeeId: employee.id,
+      companyId: appState.currentCompany.id,
+      userId: appState.currentUser.id
+    })));
+    await repository.add("logs", { companyId: appState.currentCompany.id, userId: appState.currentUser.id, type: "employee_create", detail: employee.name });
+    form.reset();
+    toast("Funcionário e documentos salvos.");
+    await renderModule("employees");
+    return;
+  }
+
+  if (module === "documents") {
+    const file = (await filesFromInput(form.elements.documentFile))[0];
+    delete data.documentFile;
+    await repository.add("documents", {
+      ...data,
+      ...(file || {}),
+      companyId: appState.currentCompany.id,
+      userId: appState.currentUser.id
+    });
+    await repository.add("logs", { companyId: appState.currentCompany.id, userId: appState.currentUser.id, type: "document_create", detail: data.name });
+    form.reset();
+    toast("Documento salvo na pasta selecionada.");
+    await renderModule("documents");
+    return;
+  }
+
+  await repository.add(module, {
+    ...data,
+    companyId: appState.currentCompany.id,
+    userId: appState.currentUser.id
+  });
+  await repository.add("logs", { companyId: appState.currentCompany.id, userId: appState.currentUser.id, type: `${module}_create`, detail: "Registro criado" });
+  form.reset();
+  toast("Registro salvo no banco local da Flow ERP.");
+  await renderModule(module);
+}
+
+async function privacyRequest(type) {
+  await repository.add("privacyRequests", {
+    companyId: appState.currentCompany.id,
+    userId: appState.currentUser.id,
+    type,
+    status: "Aberta",
+    requestedAt: new Date().toISOString()
+  });
+  await repository.add("logs", {
+    companyId: appState.currentCompany.id,
+    userId: appState.currentUser.id,
+    type: "privacy_request",
+    detail: type
+  });
+  toast("Solicitação registrada na Central de Privacidade.");
+  await renderModule("settings");
+}
+
+function drawChart(canvasId, labels, revenue, expenses) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const width = canvas.width;
+  const height = canvas.height;
+  ctx.clearRect(0, 0, width, height);
+  ctx.font = "14px Segoe UI, sans-serif";
+  ctx.lineWidth = 2;
+
+  const padding = 46;
+  const max = Math.max(...revenue, ...expenses, 1) * 1.15;
+  const xStep = (width - padding * 2) / Math.max(labels.length - 1, 1);
+  const y = (value) => height - padding - (value / max) * (height - padding * 2);
+
+  ctx.strokeStyle = "#dce5e0";
+  ctx.fillStyle = "#6e7a75";
+  for (let i = 0; i < 4; i += 1) {
+    const lineY = padding + i * ((height - padding * 2) / 3);
+    ctx.beginPath();
+    ctx.moveTo(padding, lineY);
+    ctx.lineTo(width - padding, lineY);
+    ctx.stroke();
+  }
+
+  labels.forEach((label, index) => {
+    ctx.fillText(label, padding + index * xStep - 18, height - 16);
+  });
+
+  const drawSeries = (values, color) => {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    values.forEach((value, index) => {
+      const x = padding + index * xStep;
+      const pointY = y(value);
+      if (index === 0) ctx.moveTo(x, pointY);
+      else ctx.lineTo(x, pointY);
+    });
+    ctx.stroke();
+    values.forEach((value, index) => {
+      const x = padding + index * xStep;
+      const pointY = y(value);
+      ctx.fillStyle = "#fff";
+      ctx.beginPath();
+      ctx.arc(x, pointY, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    });
+  };
+
+  drawSeries(expenses, "#d7a31d");
+  drawSeries(revenue, "#21e344");
+}
+
+function openPolicy(key) {
+  const dialog = document.querySelector("[data-policy-dialog]");
+  const policy = policies[key] || policies.central;
+  document.querySelector("[data-policy-title]").textContent = policy.title;
+  document.querySelector("[data-policy-content]").innerHTML = policy.body;
+  if (typeof dialog.showModal === "function") dialog.showModal();
+}
+
+function openAppDialog(title, body) {
+  document.querySelector("[data-app-dialog-title]").textContent = title;
+  document.querySelector("[data-app-dialog-content]").innerHTML = body;
+  const dialog = document.querySelector("[data-app-dialog]");
+  if (typeof dialog.showModal === "function") dialog.showModal();
+}
+
+async function showNotifications() {
+  const data = await dashboardData();
+  openAppDialog("Notificações", `
+    <p><strong>${data.tasks.filter((task) => task.status !== "Concluída").length}</strong> tarefas pendentes para acompanhar.</p>
+    <p><strong>${data.inventory.filter((item) => Number(item.quantity) <= Number(item.minQuantity)).length}</strong> itens abaixo ou próximos do estoque mínimo.</p>
+    <p><strong>${data.sales.filter((sale) => sale.stage !== "Ganho" && sale.stage !== "Perdido").length}</strong> oportunidades comerciais em andamento.</p>
+  `);
+}
+
+function showProfile() {
+  openAppDialog("Perfil do usuário", `
+    <p><strong>Nome:</strong> ${escapeHtml(appState.currentUser?.fullName || "Usuário")}</p>
+    <p><strong>E-mail:</strong> ${escapeHtml(appState.currentUser?.email || "")}</p>
+    <p><strong>Empresa:</strong> ${escapeHtml(appState.currentCompany?.name || "")}</p>
+    <p><strong>Perfil:</strong> ${escapeHtml(appState.currentUser?.permissionProfile || "admin")}</p>
+  `);
+}
+
+async function findStoredFile(id) {
+  const [employeeFiles, documents] = await Promise.all([
+    repository.all("employeeFiles"),
+    repository.all("documents")
+  ]);
+  return [...employeeFiles.map((file) => ({ ...file, storeName: "employeeFiles" })), ...documents.map((file) => ({ ...file, storeName: "documents" }))]
+    .find((file) => file.id === id);
+}
+
+async function previewStoredFile(id) {
+  const file = await findStoredFile(id);
+  if (!file?.dataUrl) {
+    toast("Este registro não possui arquivo para visualizar.");
+    return;
+  }
+  const win = window.open("", "_blank");
+  if (!win) {
+    toast("O navegador bloqueou a pré-visualização.");
+    return;
+  }
+  const title = escapeHtml(file.fileName || "Documento");
+  if (file.mimeType?.startsWith("image/") || file.mimeType === "application/pdf") {
+    win.document.write(`<title>${title}</title><iframe src="${file.dataUrl}" style="border:0;width:100%;height:100vh"></iframe>`);
+  } else {
+    win.document.write(`<title>${title}</title><body style="font-family:system-ui;padding:32px"><h1>${title}</h1><p>Pré-visualização indisponível para este tipo de arquivo. Use o botão baixar.</p><a download="${title}" href="${file.dataUrl}">Baixar arquivo</a></body>`);
+  }
+}
+
+async function downloadStoredFile(id) {
+  const file = await findStoredFile(id);
+  if (!file?.dataUrl) {
+    toast("Este registro não possui arquivo para baixar.");
+    return;
+  }
+  const link = document.createElement("a");
+  link.href = file.dataUrl;
+  link.download = file.fileName || "flow-documento";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+async function terminateEmployee(id) {
+  const employee = await repository.get("employees", id);
+  if (!employee) return;
+  await repository.put("employees", {
+    ...employee,
+    status: "Desligado",
+    terminationDate: employee.terminationDate || new Date().toISOString().slice(0, 10)
+  });
+  await repository.add("logs", { companyId: appState.currentCompany.id, userId: appState.currentUser.id, type: "employee_terminate", detail: employee.name });
+  toast("Funcionário marcado como desligado.");
+  await renderModule("employees");
+}
+
+function bindEvents() {
+  const header = document.querySelector("[data-header]");
+  const nav = document.querySelector("[data-nav]");
+  const actions = document.querySelector(".header-actions");
+  const menuToggle = document.querySelector("[data-menu-toggle]");
+
+  window.addEventListener("scroll", () => {
+    header.classList.toggle("scrolled", window.scrollY > 20);
+  });
+
+  menuToggle.addEventListener("click", () => {
+    const open = !nav.classList.contains("open");
+    nav.classList.toggle("open", open);
+    actions.classList.toggle("open", open);
+    document.body.classList.toggle("menu-open", open);
+    menuToggle.setAttribute("aria-expanded", String(open));
+  });
+
+  document.addEventListener("click", async (event) => {
+    const viewLink = event.target.closest("[data-view-link]");
+    if (viewLink) {
+      nav.classList.remove("open");
+      actions.classList.remove("open");
+      document.body.classList.remove("menu-open");
+      await setView(viewLink.dataset.viewLink);
+    }
+
+    const moduleButton = event.target.closest("[data-module]");
+    if (moduleButton) await renderModule(moduleButton.dataset.module);
+
+    const shortcut = event.target.closest("[data-module-shortcut]");
+    if (shortcut) await renderModule(shortcut.dataset.moduleShortcut);
+
+    const deleteButton = event.target.closest("[data-delete]");
+    if (deleteButton) {
+      await repository.remove(deleteButton.dataset.delete, deleteButton.dataset.id);
+      toast("Registro excluído.");
+      await renderModule(appState.currentModule);
+    }
+
+    const deleteFileButton = event.target.closest("[data-delete-file]");
+    if (deleteFileButton) {
+      await repository.remove(deleteFileButton.dataset.deleteFile, deleteFileButton.dataset.id);
+      toast("Arquivo excluído.");
+      await renderModule(appState.currentModule);
+    }
+
+    const previewButton = event.target.closest("[data-preview-file]");
+    if (previewButton) await previewStoredFile(previewButton.dataset.previewFile);
+
+    const downloadButton = event.target.closest("[data-download-file]");
+    if (downloadButton) await downloadStoredFile(downloadButton.dataset.downloadFile);
+
+    const terminateButton = event.target.closest("[data-terminate-employee]");
+    if (terminateButton) await terminateEmployee(terminateButton.dataset.terminateEmployee);
+
+    const privacyButton = event.target.closest("[data-privacy-request]");
+    if (privacyButton) await privacyRequest(privacyButton.dataset.privacyRequest);
+
+    if (event.target.closest("[data-logout]")) {
+      localStorage.removeItem(sessionKey);
+      appState.currentModule = "dashboard";
+      await setView("marketing");
+      toast("Sessão encerrada.");
+    }
+
+    const topAction = event.target.closest("[data-top-action]");
+    if (topAction?.dataset.topAction === "notifications") await showNotifications();
+    if (topAction?.dataset.topAction === "profile") showProfile();
+  });
+
+  document.querySelectorAll("[data-scroll-target]").forEach((button) => {
+    button.addEventListener("click", () => {
+      document.getElementById(button.dataset.scrollTarget)?.scrollIntoView({ behavior: "smooth" });
+    });
+  });
+
+  document.querySelectorAll("[data-policy]").forEach((button) => {
+    button.addEventListener("click", () => openPolicy(button.dataset.policy));
+  });
+
+  document.querySelector("[data-policy-close]").addEventListener("click", () => {
+    document.querySelector("[data-policy-dialog]").close();
+  });
+  document.querySelector("[data-app-dialog-close]").addEventListener("click", () => {
+    document.querySelector("[data-app-dialog]").close();
+  });
+
+  document.addEventListener("submit", async (event) => {
+    const form = event.target;
+    if (!form.matches("form")) return;
+    event.preventDefault();
+    if (form.dataset.form === "lead") await handleLead(form);
+    if (form.dataset.form === "signup") await handleSignup(form);
+    if (form.dataset.form === "login") await handleLogin(form);
+    if (form.dataset.moduleForm) await handleModuleForm(form);
+  });
+
+  document.querySelectorAll(".segmented button").forEach((button) => {
+    button.addEventListener("click", () => {
+      button.parentElement.querySelectorAll("button").forEach((item) => item.classList.remove("active"));
+      button.classList.add("active");
+      const scale = button.textContent.includes("ano") ? [62, 92, 118, 96, 134, 156] : [48, 64, 76, 72, 88, 102];
+      drawChart("revenueChart", ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"], scale, scale.map((value) => value * .58));
+    });
+  });
+}
+
+function initReveal() {
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) entry.target.classList.add("visible");
+    });
+  }, { threshold: .12 });
+  document.querySelectorAll(".reveal").forEach((el) => observer.observe(el));
+}
+
+function initIcons() {
+  if (window.lucide) window.lucide.createIcons();
+}
+
+document.addEventListener("DOMContentLoaded", async () => {
+  await openDatabase();
+  bindEvents();
+  initReveal();
+  initIcons();
+  drawChart("revenueChart", ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"], [52, 74, 68, 96, 88, 112], [34, 42, 46, 58, 52, 66]);
+});
