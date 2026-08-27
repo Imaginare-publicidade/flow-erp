@@ -657,7 +657,7 @@ function employeesModule(records, files, timeEntries, medicalCertificates, hrMes
             ${formField("Data de admissão", "admissionDate", "date", "", "required")}
             ${formField("Data de demissão", "terminationDate", "date", "")}
           </div>
-          ${selectField("Status", "status", ["Ativo", "Férias", "Afastado", "Desligado"])}
+          ${selectField("Status", "status", ["Ativo", "Férias", "Afastado", "Desligado"], "Ativo")}
           ${fileField("Anexar documentos do funcionário", "employeeDocuments", true)}
           <div class="module-message" data-module-message></div>
           <button class="primary-button full" type="submit"><i data-lucide="save"></i>Salvar funcionário</button>
@@ -1714,7 +1714,7 @@ async function handleEmployeeLogin(form) {
   const employees = await repository.all("employees");
   const employee = employees.find((item) => digitsOnly(item.cpf) === cpf || item.accessUsername === cpf);
   if (!employee) {
-    showMessage("employee-login", "Funcionário não encontrado. Cadastre o colaborador no ERP primeiro.", "error");
+    showMessage("employee-login", "Funcionário não encontrado. Verifique se o colaborador foi salvo no ERP neste navegador.", "error");
     return;
   }
   if (employee.status === "Desligado") {
@@ -1877,6 +1877,7 @@ async function handleModuleForm(form) {
     const employee = await repository.add("employees", {
       ...data,
       cpf,
+      status: data.status || "Ativo",
       accessUsername: cpf,
       accessPasswordHash: await hashPassword("1234"),
       mustChangePassword: true,
@@ -1891,7 +1892,7 @@ async function handleModuleForm(form) {
     })));
     await repository.add("logs", { companyId: appState.currentCompany.id, userId: appState.currentUser.id, type: "employee_create", detail: employee.name });
     form.reset();
-    toast("Funcionário e documentos salvos.");
+    toast("Funcionário salvo. Acesso: CPF e senha inicial 1234.");
     await renderModule("employees");
     return;
   }
