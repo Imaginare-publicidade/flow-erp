@@ -1,5 +1,5 @@
 const DB_NAME = "FlowERPDatabase";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const stores = [
   "users",
   "companies",
@@ -15,6 +15,9 @@ const stores = [
   "documentFolders",
   "invoices",
   "digitalSignatures",
+  "timeEntries",
+  "medicalCertificates",
+  "hrMessages",
   "permissions",
   "logs",
   "consents",
@@ -22,11 +25,13 @@ const stores = [
 ];
 
 const sessionKey = "flow.erp.session";
+const employeeSessionKey = "flow.erp.employeeSession";
 let dbPromise;
 let appState = {
   currentUser: null,
   currentCompany: null,
-  currentModule: "dashboard"
+  currentModule: "dashboard",
+  currentEmployee: null
 };
 
 const moduleInfo = {
@@ -185,6 +190,10 @@ function money(value) {
   return brl.format(Number(value || 0));
 }
 
+function digitsOnly(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -262,7 +271,7 @@ async function ensureDemoData(companyId) {
 
   await Promise.all([
     repository.add("clients", { companyId, name: "Cliente Modelo", email: "compras@clientemodelo.com.br", phone: "11988887777", city: "São Paulo", status: "Ativo" }),
-    repository.add("employees", { companyId, name: "Ana Ribeiro", department: "Financeiro", role: "Analista", email: "ana@empresa.com.br", status: "Ativo" }),
+    repository.add("employees", { companyId, name: "Ana Ribeiro", cpf: "52998224725", phone: "11988886666", department: "Financeiro", role: "Analista", email: "ana@empresa.com.br", admissionDate: "2026-01-10", status: "Ativo", accessUsername: "52998224725", accessPasswordHash: await hashPassword("1234"), mustChangePassword: true }),
     repository.add("financial", { companyId, type: "Receita", description: "Contrato ERP mensal", category: "Assinatura", amount: 428320, dueDate: "2026-08-27", status: "Recebido" }),
     repository.add("financial", { companyId, type: "Despesa", description: "Operação e equipe", category: "Administrativo", amount: 156980, dueDate: "2026-08-27", status: "Pago" }),
     repository.add("sales", { companyId, client: "Cliente Modelo", opportunity: "Implantação ERP", value: 84000, stage: "Proposta", owner: "Marina" }),
@@ -270,6 +279,21 @@ async function ensureDemoData(companyId) {
     repository.add("tasks", { companyId, title: "Revisar fechamento financeiro", owner: "Marina", dueDate: "2026-08-29", priority: "Alta", status: "Pendente" }),
     repository.add("documents", { companyId, name: "Contrato de implantação", type: "Contrato", owner: "Jurídico", status: "Em revisão", reference: "DOC-001" })
   ]);
+}
+
+async function ensureEmployeeAccessCredentials(companyId) {
+  const employees = (await repository.all("employees")).filter((employee) => employee.companyId === companyId);
+  await Promise.all(employees.map(async (employee) => {
+    const cpf = digitsOnly(employee.cpf);
+    if (!cpf || employee.accessPasswordHash) return;
+    await repository.put("employees", {
+      ...employee,
+      cpf,
+      accessUsername: cpf,
+      accessPasswordHash: await hashPassword("1234"),
+      mustChangePassword: true
+    });
+  }));
 }
 
 async function getContext() {
@@ -283,6 +307,7 @@ async function getContext() {
       appState.currentUser = user;
       appState.currentCompany = company;
       await ensureDemoData(company.id);
+      await ensureEmployeeAccessCredentials(company.id);
       return appState;
     }
   }
@@ -315,6 +340,7 @@ async function getContext() {
   appState.currentUser = user;
   appState.currentCompany = company;
   await ensureDemoData(company.id);
+  await ensureEmployeeAccessCredentials(company.id);
   return appState;
 }
 
@@ -323,7 +349,7 @@ function companyFilter(records) {
 }
 
 async function dashboardData() {
-  const [clients, employees, financial, tasks, inventory, sales, docs, consents, employeeFiles, documentFolders, invoices] = await Promise.all([
+  const [clients, employees, financial, tasks, inventory, sales, docs, consents, employeeFiles, documentFolders, invoices, timeEntries, medicalCertificates, hrMessages] = await Promise.all([
     repository.all("clients"),
     repository.all("employees"),
     repository.all("financial"),
@@ -334,7 +360,10 @@ async function dashboardData() {
     repository.all("consents"),
     repository.all("employeeFiles"),
     repository.all("documentFolders"),
-    repository.all("invoices")
+    repository.all("invoices"),
+    repository.all("timeEntries"),
+    repository.all("medicalCertificates"),
+    repository.all("hrMessages")
   ]);
   const scopedFinancial = companyFilter(financial);
   const revenue = scopedFinancial.filter((item) => item.type === "Receita").reduce((sum, item) => sum + Number(item.amount || 0), 0);
@@ -351,6 +380,9 @@ async function dashboardData() {
     employeeFiles: companyFilter(employeeFiles),
     documentFolders: companyFilter(documentFolders),
     invoices: companyFilter(invoices),
+    timeEntries: companyFilter(timeEntries),
+    medicalCertificates: companyFilter(medicalCertificates),
+    hrMessages: companyFilter(hrMessages),
     revenue,
     expenses,
     profit: revenue - expenses
@@ -572,12 +604,27 @@ function clientsModule(records) {
   `;
 }
 
-function employeesModule(records, files) {
+function employeesModule(records, files, timeEntries, medicalCertificates, hrMessages) {
   const fileRows = files.map((file) => ({
     ...file,
     storeName: "employeeFiles",
     employeeName: records.find((employee) => employee.id === file.employeeId)?.name || "Funcionário"
   }));
+  const timeRows = timeEntries.map((entry) => ({
+    ...entry,
+    employeeName: records.find((employee) => employee.id === entry.employeeId)?.name || "Funcionário"
+  }));
+  const certificateRows = medicalCertificates.map((file) => ({
+    ...file,
+    storeName: "medicalCertificates",
+    employeeName: records.find((employee) => employee.id === file.employeeId)?.name || "Funcionário"
+  }));
+  const messages = hrMessages
+    .map((message) => ({
+      ...message,
+      employeeName: records.find((employee) => employee.id === message.employeeId)?.name || "Funcionário"
+    }))
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   return `
     <div class="module-grid">
       <section class="module-panel">
@@ -619,6 +666,7 @@ function employeesModule(records, files) {
                     <td>
                       <div class="row-actions">
                         <button class="mini-button" type="button" data-terminate-employee="${employee.id}">Desligar</button>
+                        <button class="mini-button" type="button" data-point-report="${employee.id}">PDF ponto</button>
                         <button class="mini-button danger" type="button" data-delete="employees" data-id="${employee.id}">Excluir</button>
                       </div>
                     </td>
@@ -647,6 +695,68 @@ function employeesModule(records, files) {
             </table>
           </div>
         ` : emptyState("Anexe documentos no cadastro do funcionário para consultar e baixar depois.")}
+        <h2 class="subsection-title">Ponto eletrônico</h2>
+        ${timeRows.length ? `
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Funcionário</th><th>Data</th><th>Tipo</th><th>Horário</th><th>Endereço</th><th>Ações</th></tr></thead>
+              <tbody>
+                ${timeRows.map((entry) => `
+                  <tr>
+                    <td>${escapeHtml(entry.employeeName)}</td>
+                    <td>${escapeHtml(entry.date)}</td>
+                    <td>${escapeHtml(entry.type)}</td>
+                    <td><input class="table-input" type="time" value="${escapeHtml(entry.time)}" data-time-entry-input="${entry.id}"></td>
+                    <td>${escapeHtml(entry.address || entry.mapLabel || "")}</td>
+                    <td><button class="mini-button" type="button" data-save-time-entry="${entry.id}">Salvar horário</button></td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        ` : emptyState("As batidas feitas no Acesso Funcionário aparecerão aqui para consulta, edição e relatório.")}
+        <h2 class="subsection-title">Atestados médicos</h2>
+        ${certificateRows.length ? `
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Funcionário</th><th>Arquivo</th><th>Data</th><th>Ações</th></tr></thead>
+              <tbody>
+                ${certificateRows.map((file) => `
+                  <tr>
+                    <td>${escapeHtml(file.employeeName)}</td>
+                    <td>${escapeHtml(file.fileName)}</td>
+                    <td>${new Date(file.createdAt).toLocaleString("pt-BR")}</td>
+                    <td>${fileActions(file)}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        ` : emptyState("Os atestados enviados pelo funcionário aparecerão aqui.")}
+        <h2 class="subsection-title">Chat com funcionários</h2>
+        <form class="module-form compact-form" data-module-form="hrMessage" novalidate>
+          <div class="form-grid">
+            <label>Funcionário
+              <select name="employeeId" required>
+                <option value="">Selecione</option>
+                ${records.map((employee) => `<option value="${employee.id}">${escapeHtml(employee.name)} - ${escapeHtml(employee.cpf || "")}</option>`).join("")}
+              </select>
+            </label>
+            ${formField("Assunto", "subject", "text", "Mensagem do RH", "required")}
+          </div>
+          <label>Mensagem<textarea name="message" required></textarea></label>
+          <div class="module-message" data-module-message></div>
+          <button class="primary-button full" type="submit"><i data-lucide="message-circle"></i>Enviar mensagem ao funcionário</button>
+        </form>
+        <div class="chat-list">
+          ${messages.length ? messages.map((message) => `
+            <article class="chat-card ${message.direction === "employee" ? "from-employee" : "from-hr"}">
+              <strong>${message.direction === "employee" ? escapeHtml(message.employeeName) : "RH"} para ${message.direction === "employee" ? "RH" : escapeHtml(message.employeeName)}</strong>
+              <span>${new Date(message.createdAt).toLocaleString("pt-BR")}</span>
+              <p>${escapeHtml(message.message)}</p>
+            </article>
+          `).join("") : emptyState("Nenhuma conversa aberta ainda.")}
+        </div>
       </section>
     </div>
   `;
@@ -804,7 +914,7 @@ function invoicesModule(records) {
   return `
     <div class="invoice-layout">
       <section class="module-panel">
-        <h2>Emitir nota fiscal demo</h2>
+        <h2>Emissor de Nota Fiscal</h2>
         <p>Preencha os dados para gerar uma nota fiscal demonstrativa com os dados e o logotipo cadastrados em Configurações.</p>
         <form class="module-form" data-module-form="invoices" enctype="multipart/form-data" novalidate>
           <div class="settings-block">
@@ -1041,6 +1151,229 @@ function buildInvoiceHtml(invoice, company) {
 </html>`;
 }
 
+function pdfEscape(value) {
+  return String(value ?? "").replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)");
+}
+
+function makeSimplePdf(lines, filename) {
+  const objects = [];
+  const addObject = (body) => {
+    objects.push(body);
+    return objects.length;
+  };
+  const safeLines = lines.flatMap((line) => {
+    const text = String(line ?? "");
+    return text.length > 96 ? text.match(/.{1,96}(\s|$)/g) || [text] : [text];
+  });
+  const content = [
+    "BT",
+    "/F1 11 Tf",
+    "50 790 Td",
+    "14 TL",
+    ...safeLines.map((line, index) => `${index ? "T*" : ""} (${pdfEscape(line.trim())}) Tj`),
+    "ET"
+  ].join("\n");
+  const pages = addObject("<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+  addObject("<< /Type /Catalog /Pages 1 0 R >>");
+  addObject("<< /Type /Page /Parent 1 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>");
+  addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+  addObject(`<< /Length ${content.length} >>\nstream\n${content}\nendstream`);
+  const chunks = ["%PDF-1.4\n"];
+  const offsets = [0];
+  objects.forEach((object, index) => {
+    offsets.push(chunks.join("").length);
+    chunks.push(`${index + 1} 0 obj\n${object}\nendobj\n`);
+  });
+  const xrefOffset = chunks.join("").length;
+  chunks.push(`xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`);
+  offsets.slice(1).forEach((offset) => chunks.push(`${String(offset).padStart(10, "0")} 00000 n \n`));
+  chunks.push(`trailer\n<< /Size ${objects.length + 1} /Root 2 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`);
+  const blob = new Blob(chunks, { type: "application/pdf" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return pages;
+}
+
+async function downloadPointReport(employeeId) {
+  const employee = await repository.get("employees", employeeId);
+  const entries = (await repository.all("timeEntries"))
+    .filter((entry) => entry.employeeId === employeeId)
+    .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+  const lines = [
+    "Flow ERP - Relatorio de Ponto Eletronico",
+    `Empresa: ${appState.currentCompany?.name || ""}`,
+    `Funcionario: ${employee?.name || ""}`,
+    `CPF: ${employee?.cpf || ""}`,
+    `Cargo: ${employee?.role || ""}`,
+    `Gerado em: ${new Date().toLocaleString("pt-BR")}`,
+    "",
+    "Batidas:"
+  ];
+  entries.forEach((entry) => {
+    lines.push(`${entry.date} - ${entry.type} - ${entry.time} - ${entry.address || entry.mapLabel || ""}`);
+  });
+  if (!entries.length) lines.push("Nenhuma batida registrada.");
+  makeSimplePdf(lines, `relatorio-ponto-${digitsOnly(employee?.cpf || "funcionario")}.pdf`);
+}
+
+async function getEmployeeContext() {
+  const session = JSON.parse(localStorage.getItem(employeeSessionKey) || "null");
+  if (!session?.employeeId || !session?.companyId) return null;
+  const [employee, company] = await Promise.all([
+    repository.get("employees", session.employeeId),
+    repository.get("companies", session.companyId)
+  ]);
+  if (!employee || !company) return null;
+  appState.currentEmployee = employee;
+  appState.currentCompany = company;
+  return { employee, company };
+}
+
+function employeePunchTypes() {
+  return ["Entrada", "Saída do almoço", "Retorno do almoço", "Saída"];
+}
+
+async function employeePortalModule() {
+  const context = await getEmployeeContext();
+  if (!context) {
+    await setView("employee-login");
+    return "";
+  }
+  const { employee } = context;
+  document.querySelector("[data-employee-name]").textContent = employee.name || "colaborador";
+  const today = new Date().toISOString().slice(0, 10);
+  const [allEntries, allMessages, allCertificates] = await Promise.all([
+    repository.all("timeEntries"),
+    repository.all("hrMessages"),
+    repository.all("medicalCertificates")
+  ]);
+  const entries = allEntries.filter((entry) => entry.employeeId === employee.id).sort((a, b) => `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`));
+  const todayEntries = entries.filter((entry) => entry.date === today);
+  const messages = allMessages.filter((message) => message.employeeId === employee.id).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const certificates = allCertificates.filter((file) => file.employeeId === employee.id).map((file) => ({ ...file, storeName: "medicalCertificates" }));
+  return `
+    <section class="employee-panel">
+      <div class="employee-card">
+        <h2>Ponto eletrônico</h2>
+        <p>Registre suas quatro batidas diárias. O navegador pedirá permissão para usar sua localização.</p>
+        <div class="punch-grid">
+          ${employeePunchTypes().map((type) => {
+            const done = todayEntries.find((entry) => entry.type === type);
+            return `<button class="${done ? "secondary-button" : "primary-button"}" type="button" data-punch-type="${type}" ${done ? "disabled" : ""}><i data-lucide="map-pin-check"></i>${done ? `${type}: ${done.time}` : type}</button>`;
+          }).join("")}
+        </div>
+        <div class="module-message" data-employee-message></div>
+      </div>
+      <div class="employee-card">
+        <h2>Minhas batidas</h2>
+        ${entries.length ? `
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Data</th><th>Tipo</th><th>Horário</th><th>Local</th></tr></thead>
+              <tbody>${entries.slice(0, 20).map((entry) => `<tr><td>${entry.date}</td><td>${entry.type}</td><td>${entry.time}</td><td>${escapeHtml(entry.address || entry.mapLabel || "")}</td></tr>`).join("")}</tbody>
+            </table>
+          </div>
+        ` : emptyState("Você ainda não registrou nenhuma batida.")}
+        <button class="secondary-button full" type="button" data-point-report="${employee.id}"><i data-lucide="file-down"></i>Baixar relatório em PDF</button>
+      </div>
+      <div class="employee-card">
+        <h2>Atestados médicos</h2>
+        <form class="module-form compact-form" data-form="medical-certificate" enctype="multipart/form-data" novalidate>
+          ${fileField("Anexar atestado", "certificate", false)}
+          <label>Observação<textarea name="note" placeholder="Descreva o período ou detalhe para o RH"></textarea></label>
+          <button class="primary-button full" type="submit"><i data-lucide="upload"></i>Enviar atestado</button>
+        </form>
+        ${certificates.length ? certificates.map((file) => `<article class="file-card"><strong>${escapeHtml(file.fileName)}</strong>${fileActions(file)}</article>`).join("") : emptyState("Nenhum atestado enviado.")}
+      </div>
+      <div class="employee-card">
+        <h2>Chat com RH</h2>
+        <div class="employee-chat">
+          ${messages.length ? messages.map((message) => `<article class="chat-card ${message.direction === "employee" ? "from-employee" : "from-hr"}"><strong>${message.direction === "employee" ? "Você" : "RH"}</strong><span>${new Date(message.createdAt).toLocaleString("pt-BR")}</span><p>${escapeHtml(message.message)}</p></article>`).join("") : emptyState("Envie uma mensagem para abrir uma conversa com o RH.")}
+        </div>
+        <form class="module-form" data-form="employee-message" novalidate>
+          <label>Mensagem ao RH<textarea name="message" required></textarea></label>
+          <button class="primary-button full" type="submit"><i data-lucide="send"></i>Enviar mensagem</button>
+        </form>
+      </div>
+    </section>
+  `;
+}
+
+async function renderEmployeePortal() {
+  const content = document.querySelector("[data-employee-portal-content]");
+  content.innerHTML = await employeePortalModule();
+  initIcons();
+}
+
+function getBrowserLocation() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      resolve({ error: "Geolocalização indisponível neste navegador." });
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => resolve({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy
+      }),
+      (error) => resolve({ error: error.message }),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+    );
+  });
+}
+
+async function reverseGeocode(latitude, longitude) {
+  try {
+    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`);
+    if (!response.ok) throw new Error("Falha ao buscar endereço");
+    const data = await response.json();
+    return data.display_name || "";
+  } catch {
+    return "";
+  }
+}
+
+async function punchClock(type) {
+  const context = await getEmployeeContext();
+  if (!context) return;
+  const target = document.querySelector("[data-employee-message]");
+  target.textContent = "Buscando localização...";
+  target.className = "module-message";
+  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const existing = (await repository.all("timeEntries")).find((entry) => entry.employeeId === context.employee.id && entry.date === today && entry.type === type);
+  if (existing) {
+    target.textContent = "Esta batida já foi registrada hoje.";
+    target.className = "module-message error";
+    return;
+  }
+  const location = await getBrowserLocation();
+  const address = location.latitude ? await reverseGeocode(location.latitude, location.longitude) : "";
+  await repository.add("timeEntries", {
+    companyId: context.company.id,
+    employeeId: context.employee.id,
+    type,
+    date: today,
+    time: now.toTimeString().slice(0, 5),
+    timestamp: now.toISOString(),
+    latitude: location.latitude || "",
+    longitude: location.longitude || "",
+    accuracy: location.accuracy || "",
+    address,
+    mapLabel: location.latitude ? `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}` : location.error
+  });
+  await repository.add("logs", { companyId: context.company.id, employeeId: context.employee.id, type: "time_entry", detail: type });
+  toast("Ponto registrado.");
+  await renderEmployeePortal();
+}
+
 function reportsModule(data) {
   const won = data.sales.filter((sale) => sale.stage === "Ganho").reduce((sum, sale) => sum + Number(sale.value || 0), 0);
   const stockLow = data.inventory.filter((item) => Number(item.quantity) <= Number(item.minQuantity)).length;
@@ -1162,7 +1495,7 @@ async function renderModule(module = appState.currentModule) {
   if (module === "financial") content.innerHTML = financialModule(data.financial);
   if (module === "sales") content.innerHTML = salesModule(data.sales);
   if (module === "clients") content.innerHTML = clientsModule(data.clients);
-  if (module === "employees") content.innerHTML = employeesModule(data.employees, data.employeeFiles);
+  if (module === "employees") content.innerHTML = employeesModule(data.employees, data.employeeFiles, data.timeEntries, data.medicalCertificates, data.hrMessages);
   if (module === "inventory") content.innerHTML = inventoryModule(data.inventory);
   if (module === "tasks") content.innerHTML = tasksModule(data.tasks);
   if (module === "documents") content.innerHTML = documentsModule(data.documents, data.documentFolders);
@@ -1188,11 +1521,15 @@ async function setView(name) {
   document.querySelectorAll("[data-view]").forEach((view) => {
     view.classList.toggle("active", view.dataset.view === name);
   });
-  document.body.classList.toggle("auth-mode", name === "login" || name === "signup");
+  document.body.classList.toggle("auth-mode", name === "login" || name === "signup" || name === "employee-login" || name === "employee-password");
   document.body.classList.toggle("dashboard-mode", name === "dashboard");
+  document.body.classList.toggle("employee-mode", name === "employee-portal");
   if (name === "dashboard") {
     await getContext();
     await renderModule(appState.currentModule || "dashboard");
+  }
+  if (name === "employee-portal") {
+    await renderEmployeePortal();
   }
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -1347,6 +1684,114 @@ async function handleLogin(form) {
   setTimeout(() => setView("dashboard"), 500);
 }
 
+async function handleEmployeeLogin(form) {
+  const data = collectForm(form);
+  const cpf = digitsOnly(data.cpf);
+  const errors = [];
+  if (!validators.cpf(cpf)) errors.push("cpf");
+  if (!validators.required(data.password)) errors.push("password");
+  markValidity(form, errors);
+  if (errors.length) {
+    showMessage("employee-login", "Informe CPF válido e senha.", "error");
+    return;
+  }
+
+  const employees = await repository.all("employees");
+  const employee = employees.find((item) => digitsOnly(item.cpf) === cpf || item.accessUsername === cpf);
+  if (!employee) {
+    showMessage("employee-login", "Funcionário não encontrado. Cadastre o colaborador no ERP primeiro.", "error");
+    return;
+  }
+  if (employee.status === "Desligado") {
+    showMessage("employee-login", "Acesso indisponível para funcionário desligado.", "error");
+    return;
+  }
+  const expected = employee.accessPasswordHash || await hashPassword("1234");
+  if (expected !== await hashPassword(data.password)) {
+    showMessage("employee-login", "Senha inválida.", "error");
+    return;
+  }
+
+  localStorage.setItem(employeeSessionKey, JSON.stringify({ employeeId: employee.id, companyId: employee.companyId }));
+  appState.currentEmployee = employee;
+  appState.currentCompany = await repository.get("companies", employee.companyId);
+  await repository.add("logs", { companyId: employee.companyId, employeeId: employee.id, type: "employee_login", detail: "Acesso funcionário" });
+  if (employee.mustChangePassword) {
+    showMessage("employee-login", "Primeiro acesso validado. Crie uma nova senha.", "success");
+    setTimeout(() => setView("employee-password"), 500);
+  } else {
+    showMessage("employee-login", "Acesso validado. Abrindo portal.", "success");
+    setTimeout(() => setView("employee-portal"), 500);
+  }
+}
+
+async function handleEmployeePassword(form) {
+  const context = await getEmployeeContext();
+  if (!context) {
+    await setView("employee-login");
+    return;
+  }
+  const data = collectForm(form);
+  const errors = [];
+  if (!validators.password(data.password)) errors.push("password");
+  if (data.password !== data.confirmPassword) errors.push("confirmPassword");
+  markValidity(form, errors);
+  if (errors.length) {
+    showMessage("employee-password", "A nova senha precisa ter 8 caracteres, maiúscula, minúscula e número.", "error");
+    return;
+  }
+  appState.currentEmployee = await repository.put("employees", {
+    ...context.employee,
+    accessPasswordHash: await hashPassword(data.password),
+    mustChangePassword: false
+  });
+  await repository.add("logs", { companyId: context.company.id, employeeId: context.employee.id, type: "employee_password_update", detail: "Senha inicial alterada" });
+  showMessage("employee-password", "Senha salva. Abrindo seu portal.", "success");
+  setTimeout(() => setView("employee-portal"), 500);
+}
+
+async function handleMedicalCertificate(form) {
+  const context = await getEmployeeContext();
+  if (!context) return;
+  const file = (await filesFromInput(form.elements.certificate))[0];
+  if (!file) {
+    toast("Selecione um arquivo de atestado.");
+    return;
+  }
+  const data = collectForm(form);
+  await repository.add("medicalCertificates", {
+    ...file,
+    note: data.note || "",
+    companyId: context.company.id,
+    employeeId: context.employee.id
+  });
+  await repository.add("logs", { companyId: context.company.id, employeeId: context.employee.id, type: "medical_certificate_upload", detail: file.fileName });
+  form.reset();
+  toast("Atestado enviado ao RH.");
+  await renderEmployeePortal();
+}
+
+async function handleEmployeeMessage(form) {
+  const context = await getEmployeeContext();
+  if (!context) return;
+  const data = collectForm(form);
+  if (!validators.required(data.message)) {
+    toast("Digite uma mensagem para o RH.");
+    return;
+  }
+  await repository.add("hrMessages", {
+    companyId: context.company.id,
+    employeeId: context.employee.id,
+    direction: "employee",
+    subject: "Dúvida do funcionário",
+    message: data.message,
+    readByHr: false
+  });
+  form.reset();
+  toast("Mensagem enviada ao RH.");
+  await renderEmployeePortal();
+}
+
 async function handleModuleForm(form) {
   const module = form.dataset.moduleForm;
   const data = collectForm(form);
@@ -1374,6 +1819,23 @@ async function handleModuleForm(form) {
     return;
   }
 
+  if (module === "hrMessage") {
+    await repository.add("hrMessages", {
+      companyId: appState.currentCompany.id,
+      employeeId: data.employeeId,
+      userId: appState.currentUser.id,
+      direction: "hr",
+      subject: data.subject,
+      message: data.message,
+      readByEmployee: false
+    });
+    await repository.add("logs", { companyId: appState.currentCompany.id, userId: appState.currentUser.id, type: "hr_message", detail: data.subject });
+    form.reset();
+    toast("Mensagem enviada ao funcionário.");
+    await renderModule("employees");
+    return;
+  }
+
   if (module === "settings") {
     const logo = (await filesFromInput(form.elements.companyLogo))[0];
     delete data.companyLogo;
@@ -1396,8 +1858,13 @@ async function handleModuleForm(form) {
   if (module === "employees") {
     const employeeDocs = await filesFromInput(form.elements.employeeDocuments);
     delete data.employeeDocuments;
+    const cpf = digitsOnly(data.cpf);
     const employee = await repository.add("employees", {
       ...data,
+      cpf,
+      accessUsername: cpf,
+      accessPasswordHash: await hashPassword("1234"),
+      mustChangePassword: true,
       companyId: appState.currentCompany.id,
       userId: appState.currentUser.id
     });
@@ -1611,15 +2078,17 @@ function showProfile() {
 }
 
 async function findStoredFile(id) {
-  const [employeeFiles, documents, invoices] = await Promise.all([
+  const [employeeFiles, documents, invoices, medicalCertificates] = await Promise.all([
     repository.all("employeeFiles"),
     repository.all("documents"),
-    repository.all("invoices")
+    repository.all("invoices"),
+    repository.all("medicalCertificates")
   ]);
   return [
     ...employeeFiles.map((file) => ({ ...file, storeName: "employeeFiles" })),
     ...documents.map((file) => ({ ...file, storeName: "documents" })),
-    ...invoices.map((file) => ({ ...file, storeName: "invoices" }))
+    ...invoices.map((file) => ({ ...file, storeName: "invoices" })),
+    ...medicalCertificates.map((file) => ({ ...file, storeName: "medicalCertificates" }))
   ]
     .find((file) => file.id === id);
 }
@@ -1726,6 +2195,21 @@ function bindEvents() {
     const terminateButton = event.target.closest("[data-terminate-employee]");
     if (terminateButton) await terminateEmployee(terminateButton.dataset.terminateEmployee);
 
+    const saveTimeButton = event.target.closest("[data-save-time-entry]");
+    if (saveTimeButton) {
+      const entry = await repository.get("timeEntries", saveTimeButton.dataset.saveTimeEntry);
+      const input = document.querySelector(`[data-time-entry-input="${saveTimeButton.dataset.saveTimeEntry}"]`);
+      if (entry && input?.value) {
+        await repository.put("timeEntries", { ...entry, time: input.value, editedByHr: true });
+        await repository.add("logs", { companyId: appState.currentCompany.id, userId: appState.currentUser?.id, type: "time_entry_edit", detail: `${entry.type} ${entry.date}` });
+        toast("Horário do ponto salvo.");
+        await renderModule("employees");
+      }
+    }
+
+    const pointReport = event.target.closest("[data-point-report]");
+    if (pointReport) await downloadPointReport(pointReport.dataset.pointReport);
+
     const addInvoiceItem = event.target.closest("[data-add-invoice-item]");
     if (addInvoiceItem) {
       const container = document.querySelector("[data-invoice-items]");
@@ -1742,6 +2226,16 @@ function bindEvents() {
 
     const privacyButton = event.target.closest("[data-privacy-request]");
     if (privacyButton) await privacyRequest(privacyButton.dataset.privacyRequest);
+
+    const punchButton = event.target.closest("[data-punch-type]");
+    if (punchButton) await punchClock(punchButton.dataset.punchType);
+
+    if (event.target.closest("[data-employee-logout]")) {
+      localStorage.removeItem(employeeSessionKey);
+      appState.currentEmployee = null;
+      await setView("marketing");
+      toast("Acesso funcionário encerrado.");
+    }
 
     if (event.target.closest("[data-logout]")) {
       localStorage.removeItem(sessionKey);
@@ -1779,6 +2273,10 @@ function bindEvents() {
     if (form.dataset.form === "lead") await handleLead(form);
     if (form.dataset.form === "signup") await handleSignup(form);
     if (form.dataset.form === "login") await handleLogin(form);
+    if (form.dataset.form === "employee-login") await handleEmployeeLogin(form);
+    if (form.dataset.form === "employee-password") await handleEmployeePassword(form);
+    if (form.dataset.form === "medical-certificate") await handleMedicalCertificate(form);
+    if (form.dataset.form === "employee-message") await handleEmployeeMessage(form);
     if (form.dataset.moduleForm) await handleModuleForm(form);
   });
 

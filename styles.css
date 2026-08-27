@@ -500,7 +500,7 @@ p {
 .chip-users { right: 0; top: 198px; animation-delay: .8s; }
 .chip-docs { left: 36px; bottom: 56px; animation-delay: 1.5s; }
 
-section:not(.hero-section):not(.view):not(.module-panel):not(.data-panel):not(.report-panel) {
+section:not(.hero-section):not(.view):not(.module-panel):not(.data-panel):not(.report-panel):not(.employee-panel) {
   padding: clamp(76px, 10vw, 132px) clamp(20px, 5vw, 74px);
 }
 
@@ -1025,6 +1025,8 @@ textarea.invalid {
 
 .dashboard-mode .site-header,
 .dashboard-mode .site-footer,
+.employee-mode .site-header,
+.employee-mode .site-footer,
 .auth-mode .site-footer {
   display: none;
 }
@@ -1513,6 +1515,118 @@ textarea.invalid {
   transform: translateY(0);
 }
 
+.table-input {
+  min-height: 34px;
+  width: 112px;
+  padding: 0 8px;
+}
+
+.chat-list,
+.employee-chat {
+  display: grid;
+  gap: 10px;
+}
+
+.chat-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: #fff;
+}
+
+.chat-card.from-employee {
+  border-left: 3px solid var(--info);
+}
+
+.chat-card.from-hr {
+  border-left: 3px solid var(--green);
+}
+
+.chat-card strong,
+.chat-card span {
+  display: block;
+}
+
+.chat-card span {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 3px 0 8px;
+}
+
+.file-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: #fff;
+}
+
+.employee-portal.active {
+  display: block;
+  min-height: 100vh;
+  background: #f3f7f5;
+}
+
+.employee-header {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 18px;
+  padding: 18px clamp(16px, 5vw, 64px);
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, .92);
+  backdrop-filter: blur(16px);
+}
+
+.employee-header img {
+  width: 160px;
+  max-height: 62px;
+  object-fit: contain;
+}
+
+.employee-header p {
+  margin-bottom: 2px;
+  color: var(--muted);
+}
+
+.employee-header h1 {
+  margin: 0;
+  color: var(--green-ink);
+}
+
+.employee-main {
+  padding: clamp(22px, 5vw, 58px);
+}
+
+.employee-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.employee-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  padding: 20px;
+  box-shadow: 0 16px 38px rgba(0, 44, 32, .06);
+}
+
+.employee-card h2 {
+  color: var(--green-ink);
+}
+
+.employee-card p {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.punch-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 16px;
+}
+
 .erp-side-panel h2 {
   color: var(--green-ink);
 }
@@ -1843,8 +1957,19 @@ textarea.invalid {
   .report-metrics,
   .folder-grid,
   .company-logo-upload,
-  .invoice-item-row {
+  .invoice-item-row,
+  .employee-header,
+  .employee-panel,
+  .punch-grid {
     grid-template-columns: 1fr;
+  }
+
+  .employee-header {
+    justify-items: start;
+  }
+
+  .employee-header .secondary-button {
+    width: 100%;
   }
 
   .product-toolbar {
