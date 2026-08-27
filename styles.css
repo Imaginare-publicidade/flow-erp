@@ -1052,6 +1052,9 @@ textarea.invalid {
 .erp-sidebar nav {
   display: grid;
   gap: 7px;
+  max-height: calc(100vh - 132px);
+  overflow-y: auto;
+  padding-right: 2px;
 }
 
 .erp-sidebar button {
@@ -1121,6 +1124,13 @@ textarea.invalid {
   width: 100%;
 }
 
+.invoice-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(360px, .65fr);
+  gap: 16px;
+  width: 100%;
+}
+
 .module-panel,
 .data-panel,
 .quick-panel,
@@ -1179,6 +1189,30 @@ textarea.invalid {
 
 .module-form .form-grid.three {
   grid-template-columns: repeat(3, 1fr);
+}
+
+.invoice-items {
+  display: grid;
+  gap: 10px;
+}
+
+.invoice-item-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  align-items: end;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.invoice-item-row label {
+  min-width: 0;
+}
+
+.invoice-item-row label:first-child {
+  grid-column: span 2;
 }
 
 .table-wrap {
@@ -1702,6 +1736,7 @@ textarea.invalid {
   .erp-content,
   .analytics-layout,
   .module-grid,
+  .invoice-layout,
   .settings-layout {
     grid-template-columns: 1fr;
   }
@@ -1807,7 +1842,8 @@ textarea.invalid {
   .dashboard-actions,
   .report-metrics,
   .folder-grid,
-  .company-logo-upload {
+  .company-logo-upload,
+  .invoice-item-row {
     grid-template-columns: 1fr;
   }
 

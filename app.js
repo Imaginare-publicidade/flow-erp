@@ -1,5 +1,5 @@
 const DB_NAME = "FlowERPDatabase";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const stores = [
   "users",
   "companies",
@@ -13,6 +13,8 @@ const stores = [
   "documents",
   "employeeFiles",
   "documentFolders",
+  "invoices",
+  "digitalSignatures",
   "permissions",
   "logs",
   "consents",
@@ -36,6 +38,7 @@ const moduleInfo = {
   inventory: { title: "Estoque" },
   tasks: { title: "Tarefas" },
   documents: { title: "Documentos" },
+  invoices: { title: "Emissão de notas fiscais" },
   reports: { title: "Relatórios" },
   settings: { title: "Configurações da empresa" }
 };
@@ -320,7 +323,7 @@ function companyFilter(records) {
 }
 
 async function dashboardData() {
-  const [clients, employees, financial, tasks, inventory, sales, docs, consents, employeeFiles, documentFolders] = await Promise.all([
+  const [clients, employees, financial, tasks, inventory, sales, docs, consents, employeeFiles, documentFolders, invoices] = await Promise.all([
     repository.all("clients"),
     repository.all("employees"),
     repository.all("financial"),
@@ -330,7 +333,8 @@ async function dashboardData() {
     repository.all("documents"),
     repository.all("consents"),
     repository.all("employeeFiles"),
-    repository.all("documentFolders")
+    repository.all("documentFolders"),
+    repository.all("invoices")
   ]);
   const scopedFinancial = companyFilter(financial);
   const revenue = scopedFinancial.filter((item) => item.type === "Receita").reduce((sum, item) => sum + Number(item.amount || 0), 0);
@@ -346,6 +350,7 @@ async function dashboardData() {
     consents: companyFilter(consents),
     employeeFiles: companyFilter(employeeFiles),
     documentFolders: companyFilter(documentFolders),
+    invoices: companyFilter(invoices),
     revenue,
     expenses,
     profit: revenue - expenses
@@ -464,6 +469,7 @@ function dashboardModule(data) {
       ${pendingTasks.length ? pendingTasks.map((task) => `<p><strong>${escapeHtml(task.title)}</strong><span>${escapeHtml(task.status)}</span></p>`).join("") : "<p><strong>Nenhuma tarefa pendente</strong><span>Operação em dia</span></p>"}
       <p><strong>Oportunidades</strong><span>${data.sales.length} no CRM</span></p>
       <p><strong>Documentos</strong><span>${data.documents.length} cadastrados</span></p>
+      <p><strong>Notas fiscais</strong><span>${data.invoices.length} demos geradas</span></p>
       <button class="secondary-button full" type="button" data-logout><i data-lucide="log-out"></i>Sair do demo</button>
     </aside>
   `;
@@ -778,6 +784,263 @@ function documentsModule(records, folders) {
   `;
 }
 
+function invoiceItemRow(index) {
+  return `
+    <div class="invoice-item-row" data-invoice-item-row>
+      ${formField("Descrição do item/serviço", "itemDescription", "text", "", "required")}
+      ${formField("NCM/Código", "itemCode", "text", "")}
+      ${formField("CFOP", "itemCfop", "text", "")}
+      ${formField("Qtd.", "itemQuantity", "number", "1", "min='0' step='0.01' required")}
+      ${selectField("Unid.", "itemUnit", ["UN", "CX", "KG", "LT", "SERV"], index === 0 ? "UN" : "")}
+      ${formField("Valor unitário", "itemUnitValue", "number", "", "min='0' step='0.01' required")}
+      ${formField("Desconto", "itemDiscount", "number", "0", "min='0' step='0.01'")}
+      <button class="mini-button danger" type="button" data-remove-invoice-item>Remover</button>
+    </div>
+  `;
+}
+
+function invoicesModule(records) {
+  const rows = records.map((record) => ({ ...record, storeName: "invoices" }));
+  return `
+    <div class="invoice-layout">
+      <section class="module-panel">
+        <h2>Emitir nota fiscal demo</h2>
+        <p>Preencha os dados para gerar uma nota fiscal demonstrativa com os dados e o logotipo cadastrados em Configurações.</p>
+        <form class="module-form" data-module-form="invoices" enctype="multipart/form-data" novalidate>
+          <div class="settings-block">
+            <h3>Dados da emissão</h3>
+            <div class="form-grid three">
+              ${selectField("Modelo", "model", ["NF-e", "NFS-e", "NFC-e"], "NF-e")}
+              ${formField("Número", "number", "text", "", "required")}
+              ${formField("Série", "series", "text", "1", "required")}
+              ${formField("Data de emissão", "issueDate", "date", new Date().toISOString().slice(0, 10), "required")}
+              ${formField("Natureza da operação", "operationNature", "text", "Venda de mercadoria", "required")}
+              ${selectField("Tipo de operação", "operationType", ["Saída", "Entrada"], "Saída")}
+              ${formField("Chave de acesso demo", "accessKey", "text", "", "placeholder='Gerada automaticamente se ficar vazia'")}
+              ${formField("Protocolo demo", "protocol", "text", "", "placeholder='Gerado automaticamente se ficar vazio'")}
+              ${selectField("Finalidade", "purpose", ["Normal", "Complementar", "Ajuste", "Devolução"], "Normal")}
+            </div>
+          </div>
+
+          <div class="settings-block">
+            <h3>Destinatário</h3>
+            <div class="form-grid three">
+              ${formField("Nome/Razão social", "recipientName", "text", "", "required")}
+              ${formField("CPF/CNPJ", "recipientDocument", "text", "", "required")}
+              ${formField("Inscrição estadual", "recipientStateRegistration", "text", "")}
+              ${formField("E-mail", "recipientEmail", "email", "", "required")}
+              ${formField("Telefone", "recipientPhone", "tel", "")}
+              ${formField("CEP", "recipientZip", "text", "")}
+              ${formField("Endereço", "recipientAddress", "text", "", "required")}
+              ${formField("Bairro", "recipientDistrict", "text", "")}
+              ${formField("Cidade", "recipientCity", "text", "", "required")}
+              ${selectField("Estado", "recipientState", ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"], "SP")}
+            </div>
+          </div>
+
+          <div class="settings-block">
+            <div class="panel-head">
+              <h3>Itens da nota</h3>
+              <button class="mini-button" type="button" data-add-invoice-item>Adicionar item</button>
+            </div>
+            <div class="invoice-items" data-invoice-items>${invoiceItemRow(0)}</div>
+          </div>
+
+          <div class="settings-block">
+            <h3>Impostos, transporte e pagamento</h3>
+            <div class="form-grid three">
+              ${formField("Base ICMS", "icmsBase", "number", "0", "min='0' step='0.01'")}
+              ${formField("Valor ICMS", "icmsValue", "number", "0", "min='0' step='0.01'")}
+              ${formField("Valor IPI", "ipiValue", "number", "0", "min='0' step='0.01'")}
+              ${formField("PIS", "pisValue", "number", "0", "min='0' step='0.01'")}
+              ${formField("COFINS", "cofinsValue", "number", "0", "min='0' step='0.01'")}
+              ${formField("ISS", "issValue", "number", "0", "min='0' step='0.01'")}
+              ${formField("Frete", "freightValue", "number", "0", "min='0' step='0.01'")}
+              ${formField("Transportadora", "carrier", "text", "")}
+              ${selectField("Forma de pagamento", "paymentMethod", ["Pix", "Boleto", "Cartão", "Transferência", "Dinheiro", "Faturado"], "Pix")}
+              ${selectField("Condição de pagamento", "paymentTerms", ["À vista", "7 dias", "15 dias", "30 dias", "Parcelado"], "À vista")}
+              ${formField("Vencimento", "paymentDueDate", "date", "")}
+            </div>
+            <label>Informações complementares<textarea name="notes">Nota fiscal gerada em ambiente demonstrativo da Flow ERP, sem validade fiscal.</textarea></label>
+          </div>
+
+          <div class="settings-block">
+            <h3>Assinatura digital da empresa</h3>
+            <p>Insira o arquivo de assinatura/certificado para registrar a preparação da emissão. Este demo não transmite dados para SEFAZ ou prefeitura.</p>
+            <div class="form-grid">
+              ${formField("Responsável pela assinatura", "signatureResponsible", "text", appState.currentCompany?.responsible || appState.currentUser?.fullName || "", "required")}
+              ${fileField("Arquivo da assinatura digital", "digitalSignature", false)}
+            </div>
+          </div>
+
+          <div class="module-message" data-module-message></div>
+          <button class="primary-button full" type="submit"><i data-lucide="receipt-text"></i>Gerar nota fiscal demo</button>
+        </form>
+      </section>
+      <section class="data-panel">
+        <h2>Notas fiscais geradas</h2>
+        ${rows.length ? `
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Número</th><th>Modelo</th><th>Destinatário</th><th>Total</th><th>Emissão</th><th>Ações</th></tr></thead>
+              <tbody>
+                ${rows.map((record) => `
+                  <tr>
+                    <td>${escapeHtml(record.number)}/${escapeHtml(record.series)}</td>
+                    <td>${escapeHtml(record.model)}</td>
+                    <td>${escapeHtml(record.recipientName)}</td>
+                    <td>${money(record.total)}</td>
+                    <td>${escapeHtml(record.issueDate)}</td>
+                    <td>${fileActions(record)}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        ` : emptyState("Nenhuma nota fiscal demo gerada ainda. Preencha o formulário para criar a primeira.")}
+      </section>
+    </div>
+  `;
+}
+
+function invoiceAccessKey() {
+  return Array.from({ length: 44 }, () => Math.floor(Math.random() * 10)).join("");
+}
+
+function invoiceProtocol() {
+  return `${Date.now()}${Math.floor(Math.random() * 9000 + 1000)}`;
+}
+
+function collectInvoiceItems(form) {
+  const descriptions = new FormData(form).getAll("itemDescription");
+  const codes = new FormData(form).getAll("itemCode");
+  const cfops = new FormData(form).getAll("itemCfop");
+  const quantities = new FormData(form).getAll("itemQuantity");
+  const units = new FormData(form).getAll("itemUnit");
+  const unitValues = new FormData(form).getAll("itemUnitValue");
+  const discounts = new FormData(form).getAll("itemDiscount");
+  return descriptions.map((description, index) => {
+    const quantity = Number(quantities[index] || 0);
+    const unitValue = Number(unitValues[index] || 0);
+    const discount = Number(discounts[index] || 0);
+    return {
+      description,
+      code: codes[index] || "",
+      cfop: cfops[index] || "",
+      quantity,
+      unit: units[index] || "UN",
+      unitValue,
+      discount,
+      total: Math.max(quantity * unitValue - discount, 0)
+    };
+  }).filter((item) => item.description && item.quantity > 0);
+}
+
+function buildInvoiceHtml(invoice, company) {
+  const logo = company.logoDataUrl || new URL("assets/flow-logo.png", window.location.href).href;
+  const itemsRows = invoice.items.map((item, index) => `
+    <tr>
+      <td>${index + 1}</td>
+      <td>${escapeHtml(item.description)}</td>
+      <td>${escapeHtml(item.code)}</td>
+      <td>${escapeHtml(item.cfop)}</td>
+      <td>${escapeHtml(item.unit)}</td>
+      <td>${number.format(item.quantity)}</td>
+      <td>${money(item.unitValue)}</td>
+      <td>${money(item.discount)}</td>
+      <td>${money(item.total)}</td>
+    </tr>
+  `).join("");
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nota Fiscal Demo ${escapeHtml(invoice.number)}</title>
+  <style>
+    body{font-family:Arial,sans-serif;margin:0;background:#eef4f1;color:#092d23}
+    .note{max-width:1040px;margin:28px auto;background:#fff;border:1px solid #cfdcd6;padding:28px}
+    header{display:grid;grid-template-columns:210px 1fr auto;gap:18px;align-items:center;border-bottom:3px solid #21e344;padding-bottom:18px}
+    img{max-width:190px;max-height:86px;object-fit:contain}
+    h1{margin:0;font-size:28px}.badge{background:#21e344;color:#062618;padding:10px 14px;font-weight:800}
+    .demo{margin:18px 0;padding:12px;border:1px dashed #d7a31d;background:#fff9e8;color:#6f5104;font-weight:700}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}.box{border:1px solid #dce5e0;padding:14px}
+    h2{font-size:16px;margin:0 0 10px}p{margin:4px 0;line-height:1.45}
+    table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #dce5e0;padding:9px;text-align:left;font-size:13px}th{background:#f3f7f5}
+    .totals{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:16px}.total{background:#f3f7f5;border:1px solid #dce5e0;padding:12px}
+    .grand{background:#092d23;color:#fff}.sign{margin-top:20px;border-top:1px solid #dce5e0;padding-top:14px}
+    @media print{body{background:#fff}.note{margin:0;border:0}.no-print{display:none}}
+  </style>
+</head>
+<body>
+  <main class="note">
+    <header>
+      <img src="${logo}" alt="Logotipo da empresa">
+      <div>
+        <h1>${escapeHtml(invoice.model)} ${escapeHtml(invoice.number)} / Série ${escapeHtml(invoice.series)}</h1>
+        <p><strong>Natureza:</strong> ${escapeHtml(invoice.operationNature)} • <strong>Operação:</strong> ${escapeHtml(invoice.operationType)}</p>
+        <p><strong>Emissão:</strong> ${escapeHtml(invoice.issueDate)} • <strong>Finalidade:</strong> ${escapeHtml(invoice.purpose)}</p>
+      </div>
+      <div class="badge">NOTA DEMO</div>
+    </header>
+    <div class="demo">Documento demonstrativo gerado pela Flow ERP. Não possui validade fiscal e não foi transmitido para órgãos fiscais.</div>
+    <section class="grid">
+      <div class="box">
+        <h2>Emitente</h2>
+        <p><strong>${escapeHtml(company.name || "")}</strong></p>
+        <p>CNPJ: ${escapeHtml(company.cnpj || "")}</p>
+        <p>${escapeHtml(company.address || "")}</p>
+        <p>${escapeHtml(company.city || "")} - ${escapeHtml(company.state || "")}</p>
+        <p>${escapeHtml(company.email || "")} ${company.phone ? `• ${escapeHtml(company.phone)}` : ""}</p>
+      </div>
+      <div class="box">
+        <h2>Destinatário</h2>
+        <p><strong>${escapeHtml(invoice.recipientName)}</strong></p>
+        <p>CPF/CNPJ: ${escapeHtml(invoice.recipientDocument)}</p>
+        <p>IE: ${escapeHtml(invoice.recipientStateRegistration || "Isento/Não informado")}</p>
+        <p>${escapeHtml(invoice.recipientAddress)}, ${escapeHtml(invoice.recipientDistrict || "")}</p>
+        <p>${escapeHtml(invoice.recipientCity)} - ${escapeHtml(invoice.recipientState)}</p>
+        <p>${escapeHtml(invoice.recipientEmail)} ${invoice.recipientPhone ? `• ${escapeHtml(invoice.recipientPhone)}` : ""}</p>
+      </div>
+    </section>
+    <section class="box" style="margin-top:14px">
+      <h2>Chave e protocolo demo</h2>
+      <p><strong>Chave de acesso:</strong> ${escapeHtml(invoice.accessKey)}</p>
+      <p><strong>Protocolo:</strong> ${escapeHtml(invoice.protocol)}</p>
+    </section>
+    <table>
+      <thead><tr><th>#</th><th>Descrição</th><th>NCM/Código</th><th>CFOP</th><th>Unid.</th><th>Qtd.</th><th>Unitário</th><th>Desconto</th><th>Total</th></tr></thead>
+      <tbody>${itemsRows}</tbody>
+    </table>
+    <section class="totals">
+      <div class="total"><p>Produtos/Serviços</p><strong>${money(invoice.itemsTotal)}</strong></div>
+      <div class="total"><p>Impostos</p><strong>${money(invoice.taxesTotal)}</strong></div>
+      <div class="total"><p>Frete</p><strong>${money(invoice.freightValue)}</strong></div>
+      <div class="total grand"><p>Total da nota</p><strong>${money(invoice.total)}</strong></div>
+    </section>
+    <section class="grid">
+      <div class="box">
+        <h2>Pagamento e transporte</h2>
+        <p><strong>Forma:</strong> ${escapeHtml(invoice.paymentMethod)} • ${escapeHtml(invoice.paymentTerms)}</p>
+        <p><strong>Vencimento:</strong> ${escapeHtml(invoice.paymentDueDate || "Não informado")}</p>
+        <p><strong>Transportadora:</strong> ${escapeHtml(invoice.carrier || "Não informado")}</p>
+      </div>
+      <div class="box">
+        <h2>Tributos informados</h2>
+        <p>Base ICMS: ${money(invoice.icmsBase)} • ICMS: ${money(invoice.icmsValue)} • IPI: ${money(invoice.ipiValue)}</p>
+        <p>PIS: ${money(invoice.pisValue)} • COFINS: ${money(invoice.cofinsValue)} • ISS: ${money(invoice.issValue)}</p>
+      </div>
+    </section>
+    <section class="sign">
+      <p><strong>Assinatura digital:</strong> ${escapeHtml(invoice.signatureFileName || "Arquivo não anexado")} • Responsável: ${escapeHtml(invoice.signatureResponsible)}</p>
+      <p><strong>Informações complementares:</strong> ${escapeHtml(invoice.notes || "")}</p>
+    </section>
+    <p class="no-print"><button onclick="window.print()">Imprimir nota demo</button></p>
+  </main>
+</body>
+</html>`;
+}
+
 function reportsModule(data) {
   const won = data.sales.filter((sale) => sale.stage === "Ganho").reduce((sum, sale) => sum + Number(sale.value || 0), 0);
   const stockLow = data.inventory.filter((item) => Number(item.quantity) <= Number(item.minQuantity)).length;
@@ -789,7 +1052,7 @@ function reportsModule(data) {
         <article><span>Receita total</span><strong>${money(data.revenue)}</strong></article>
         <article><span>Lucro estimado</span><strong>${money(data.profit)}</strong></article>
         <article><span>Vendas ganhas</span><strong>${money(won)}</strong></article>
-        <article><span>Estoque crítico</span><strong>${stockLow}</strong></article>
+        <article><span>Notas demo</span><strong>${data.invoices.length}</strong></article>
       </div>
       <div class="table-wrap">
         <table class="data-table">
@@ -800,6 +1063,8 @@ function reportsModule(data) {
             <tr><td>RH</td><td>${data.employees.length} funcionários</td><td>Base de equipe pronta para permissões e processos internos.</td></tr>
             <tr><td>Operações</td><td>${data.tasks.length} tarefas</td><td>Controle de execução por prazo, responsável e prioridade.</td></tr>
             <tr><td>Documentos</td><td>${data.documents.length} registros</td><td>Biblioteca documental preparada para organização e governança.</td></tr>
+            <tr><td>Fiscal</td><td>${data.invoices.length} notas demo</td><td>Emissão demonstrativa com itens, tributos, assinatura e documento gerado.</td></tr>
+            <tr><td>Estoque</td><td>${stockLow} itens críticos</td><td>Produtos abaixo do mínimo merecem reposição ou revisão operacional.</td></tr>
           </tbody>
         </table>
       </div>
@@ -901,6 +1166,7 @@ async function renderModule(module = appState.currentModule) {
   if (module === "inventory") content.innerHTML = inventoryModule(data.inventory);
   if (module === "tasks") content.innerHTML = tasksModule(data.tasks);
   if (module === "documents") content.innerHTML = documentsModule(data.documents, data.documentFolders);
+  if (module === "invoices") content.innerHTML = invoicesModule(data.invoices);
   if (module === "reports") content.innerHTML = reportsModule(data);
   if (module === "settings") {
     const requests = companyFilter(await repository.all("privacyRequests"));
@@ -1164,6 +1430,69 @@ async function handleModuleForm(form) {
     return;
   }
 
+  if (module === "invoices") {
+    const items = collectInvoiceItems(form);
+    const signature = (await filesFromInput(form.elements.digitalSignature))[0];
+    delete data.digitalSignature;
+    const requiredInvoiceFields = ["number", "series", "issueDate", "operationNature", "recipientName", "recipientDocument", "recipientEmail", "recipientAddress", "recipientCity"];
+    const invoiceErrors = requiredInvoiceFields.filter((field) => !validators.required(data[field]));
+    if (!items.length) invoiceErrors.push("itemDescription", "itemQuantity", "itemUnitValue");
+    if (data.recipientEmail && !validators.email(data.recipientEmail)) invoiceErrors.push("recipientEmail");
+    markValidity(form, [...new Set(invoiceErrors)]);
+    if (invoiceErrors.length) {
+      moduleMessage("Preencha os dados principais da nota e ao menos um item válido.", "error");
+      return;
+    }
+
+    const itemsTotal = items.reduce((sum, item) => sum + item.total, 0);
+    const taxesTotal = ["icmsValue", "ipiValue", "pisValue", "cofinsValue", "issValue"].reduce((sum, field) => sum + Number(data[field] || 0), 0);
+    const invoice = {
+      ...data,
+      companyId: appState.currentCompany.id,
+      userId: appState.currentUser.id,
+      accessKey: data.accessKey || invoiceAccessKey(),
+      protocol: data.protocol || invoiceProtocol(),
+      items,
+      itemsTotal,
+      taxesTotal,
+      freightValue: Number(data.freightValue || 0),
+      total: itemsTotal + taxesTotal + Number(data.freightValue || 0),
+      icmsBase: Number(data.icmsBase || 0),
+      icmsValue: Number(data.icmsValue || 0),
+      ipiValue: Number(data.ipiValue || 0),
+      pisValue: Number(data.pisValue || 0),
+      cofinsValue: Number(data.cofinsValue || 0),
+      issValue: Number(data.issValue || 0),
+      signatureResponsible: data.signatureResponsible,
+      signatureFileName: signature?.fileName || "",
+      signatureMimeType: signature?.mimeType || "",
+      signatureDataUrl: signature?.dataUrl || ""
+    };
+    const html = buildInvoiceHtml(invoice, appState.currentCompany);
+    const saved = await repository.add("invoices", {
+      ...invoice,
+      fileName: `nota-fiscal-demo-${invoice.number || Date.now()}.html`,
+      mimeType: "text/html",
+      size: html.length,
+      dataUrl: `data:text/html;charset=utf-8,${encodeURIComponent(html)}`
+    });
+    if (signature) {
+      await repository.add("digitalSignatures", {
+        ...signature,
+        companyId: appState.currentCompany.id,
+        userId: appState.currentUser.id,
+        invoiceId: saved.id,
+        responsible: data.signatureResponsible
+      });
+    }
+    await repository.add("logs", { companyId: appState.currentCompany.id, userId: appState.currentUser.id, type: "invoice_demo_create", detail: `Nota demo ${invoice.number}` });
+    form.reset();
+    toast("Nota fiscal demo gerada e salva.");
+    await renderModule("invoices");
+    await previewStoredFile(saved.id);
+    return;
+  }
+
   await repository.add(module, {
     ...data,
     companyId: appState.currentCompany.id,
@@ -1282,11 +1611,16 @@ function showProfile() {
 }
 
 async function findStoredFile(id) {
-  const [employeeFiles, documents] = await Promise.all([
+  const [employeeFiles, documents, invoices] = await Promise.all([
     repository.all("employeeFiles"),
-    repository.all("documents")
+    repository.all("documents"),
+    repository.all("invoices")
   ]);
-  return [...employeeFiles.map((file) => ({ ...file, storeName: "employeeFiles" })), ...documents.map((file) => ({ ...file, storeName: "documents" }))]
+  return [
+    ...employeeFiles.map((file) => ({ ...file, storeName: "employeeFiles" })),
+    ...documents.map((file) => ({ ...file, storeName: "documents" })),
+    ...invoices.map((file) => ({ ...file, storeName: "invoices" }))
+  ]
     .find((file) => file.id === id);
 }
 
@@ -1302,7 +1636,7 @@ async function previewStoredFile(id) {
     return;
   }
   const title = escapeHtml(file.fileName || "Documento");
-  if (file.mimeType?.startsWith("image/") || file.mimeType === "application/pdf") {
+  if (file.mimeType?.startsWith("image/") || file.mimeType === "application/pdf" || file.mimeType === "text/html") {
     win.document.write(`<title>${title}</title><iframe src="${file.dataUrl}" style="border:0;width:100%;height:100vh"></iframe>`);
   } else {
     win.document.write(`<title>${title}</title><body style="font-family:system-ui;padding:32px"><h1>${title}</h1><p>Pré-visualização indisponível para este tipo de arquivo. Use o botão baixar.</p><a download="${title}" href="${file.dataUrl}">Baixar arquivo</a></body>`);
@@ -1391,6 +1725,20 @@ function bindEvents() {
 
     const terminateButton = event.target.closest("[data-terminate-employee]");
     if (terminateButton) await terminateEmployee(terminateButton.dataset.terminateEmployee);
+
+    const addInvoiceItem = event.target.closest("[data-add-invoice-item]");
+    if (addInvoiceItem) {
+      const container = document.querySelector("[data-invoice-items]");
+      container.insertAdjacentHTML("beforeend", invoiceItemRow(container.querySelectorAll("[data-invoice-item-row]").length));
+      initIcons();
+    }
+
+    const removeInvoiceItem = event.target.closest("[data-remove-invoice-item]");
+    if (removeInvoiceItem) {
+      const rows = document.querySelectorAll("[data-invoice-item-row]");
+      if (rows.length > 1) removeInvoiceItem.closest("[data-invoice-item-row]").remove();
+      else toast("A nota precisa ter pelo menos um item.");
+    }
 
     const privacyButton = event.target.closest("[data-privacy-request]");
     if (privacyButton) await privacyRequest(privacyButton.dataset.privacyRequest);
