@@ -440,7 +440,9 @@ function setTopbar() {
 
 async function renderKpis() {
   const data = await dashboardData();
-  document.querySelector("[data-dashboard-kpis]").innerHTML = `
+  const kpis = document.querySelector("[data-dashboard-kpis]");
+  if (!kpis) return;
+  kpis.innerHTML = `
     <article><span>Faturamento</span><strong>${money(data.revenue)}</strong><small>${data.financial.length} lançamentos</small></article>
     <article><span>Despesas</span><strong>${money(data.expenses)}</strong><small>controle operacional</small></article>
     <article><span>Lucro</span><strong>${money(data.profit)}</strong><small>receita - despesa</small></article>
@@ -448,6 +450,13 @@ async function renderKpis() {
     <article><span>Funcionários</span><strong>${number.format(data.employees.length)}</strong><small>equipe cadastrada</small></article>
     <article><span>Tarefas pendentes</span><strong>${number.format(data.tasks.filter((task) => task.status !== "Concluída").length)}</strong><small>rotina em aberto</small></article>
   `;
+}
+
+function toggleDashboardKpis(visible) {
+  const kpis = document.querySelector("[data-dashboard-kpis]");
+  if (!kpis) return;
+  kpis.hidden = !visible;
+  kpis.setAttribute("aria-hidden", String(!visible));
 }
 
 function statusClass(value) {
@@ -1532,7 +1541,8 @@ async function renderModule(module = appState.currentModule) {
 
   const content = document.querySelector("[data-module-content]");
   const data = await dashboardData();
-  await renderKpis();
+  toggleDashboardKpis(module === "dashboard");
+  if (module === "dashboard") await renderKpis();
   content.classList.toggle("module-mode", module !== "dashboard");
 
   if (module === "dashboard") content.innerHTML = dashboardModule(data);

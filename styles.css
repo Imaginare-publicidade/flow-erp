@@ -523,7 +523,7 @@ p {
 .chip-users { right: 0; top: 198px; animation-delay: .8s; }
 .chip-docs { left: 36px; bottom: 56px; animation-delay: 1.5s; }
 
-section:not(.hero-section):not(.view):not(.module-panel):not(.data-panel):not(.report-panel):not(.employee-panel) {
+section:not(.hero-section):not(.view):not(.module-panel):not(.data-panel):not(.report-panel):not(.employee-panel):not(.erp-kpis):not(.erp-content) {
   padding: clamp(76px, 10vw, 132px) clamp(20px, 5vw, 74px);
 }
 
@@ -727,6 +727,10 @@ section:not(.hero-section):not(.view):not(.module-panel):not(.data-panel):not(.r
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
+}
+
+.erp-kpis[hidden] {
+  display: none;
 }
 
 .kpi-row article,
@@ -2126,7 +2130,7 @@ html[data-theme="dark"] .header-actions.open {
     margin: 0 6px 10px 0;
   }
 
-  section:not(.hero-section):not(.view) {
+  section:not(.hero-section):not(.view):not(.erp-kpis):not(.erp-content) {
     padding-inline: 16px;
   }
 
