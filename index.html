@@ -13,7 +13,7 @@
         document.documentElement.dataset.theme = savedTheme || (prefersDark ? "dark" : "light");
       })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=20260909-2">
+    <link rel="stylesheet" href="styles.css?v=20260909-3">
   </head>
   <body>
     <div class="app-shell">
@@ -42,7 +42,6 @@
           <button class="text-button" type="button" data-view-link="login">Entrar</button>
           <button class="text-button" type="button" data-view-link="employee-login">Acesso Funcionário</button>
           <button class="primary-button" type="button" data-view-link="signup">
-            <i data-lucide="user-plus"></i>
             Cadastre-se
           </button>
         </div>
@@ -62,11 +61,9 @@
               <p class="hero-copy">A Flow ERP conecta setores, organiza processos e centraliza informações para transformar a gestão da sua empresa em uma experiência mais simples, inteligente e eficiente.</p>
               <div class="hero-actions">
                 <button class="primary-button large" type="button" data-scroll-target="pre-cadastro">
-                  <i data-lucide="rocket"></i>
                   Começar agora
                 </button>
                 <button class="secondary-button large" type="button" data-scroll-target="como-funciona">
-                  <i data-lucide="play-circle"></i>
                   Conhecer a Flow
                 </button>
               </div>
@@ -79,15 +76,12 @@
 
             <div class="hero-visual reveal delay-1" aria-label="Mockup visual de dashboard Flow ERP">
               <div class="floating-chip chip-sales">
-                <i data-lucide="trending-up"></i>
                 Vendas +18%
               </div>
               <div class="floating-chip chip-users">
-                <i data-lucide="users"></i>
                 RH integrado
               </div>
               <div class="floating-chip chip-docs">
-                <i data-lucide="file-check-2"></i>
                 24 docs
               </div>
               <div class="dashboard-3d">
@@ -135,10 +129,10 @@
                   <article class="workflow-panel">
                     <span>Integrações ativas</span>
                     <div class="mini-flow">
-                      <i data-lucide="wallet"></i>
-                      <i data-lucide="shopping-bag"></i>
-                      <i data-lucide="archive"></i>
-                      <i data-lucide="briefcase-business"></i>
+                      <span>Financeiro</span>
+                      <span>Vendas</span>
+                      <span>RH</span>
+                      <span>Estoque</span>
                     </div>
                   </article>
                 </div>
@@ -175,14 +169,14 @@
               <p>Recursos organizados para equipes que precisam enxergar a operação inteira sem perder velocidade nas rotinas do dia a dia.</p>
             </div>
             <div class="feature-grid">
-              <article class="feature-card reveal"><i data-lucide="wallet-cards"></i><h3>Financeiro</h3><p>Controle financeiro, fluxo de caixa, contas a pagar, contas a receber e indicadores para acompanhar a saúde da empresa.</p></article>
-              <article class="feature-card reveal"><i data-lucide="handshake"></i><h3>Vendas</h3><p>Organização de clientes, oportunidades, propostas e acompanhamento comercial com visão clara do funil.</p></article>
-              <article class="feature-card reveal"><i data-lucide="id-card"></i><h3>Funcionários</h3><p>Informações dos colaboradores, documentos, processos internos e dados da equipe centralizados.</p></article>
-              <article class="feature-card reveal"><i data-lucide="list-checks"></i><h3>Tarefas</h3><p>Controle de atividades, responsáveis, prazos e operações recorrentes da empresa.</p></article>
-              <article class="feature-card reveal"><i data-lucide="package-search"></i><h3>Estoque</h3><p>Controle de produtos, entradas, saídas, movimentações e disponibilidade operacional.</p></article>
-              <article class="feature-card reveal"><i data-lucide="gauge"></i><h3>Indicadores</h3><p>Visualização dos principais números da empresa em tempo real, com leitura rápida para a gestão.</p></article>
-              <article class="feature-card reveal"><i data-lucide="file-bar-chart-2"></i><h3>Relatórios</h3><p>Relatórios para apoiar decisões estratégicas e transformar dados em orientação prática.</p></article>
-              <article class="feature-card reveal"><i data-lucide="folder-lock"></i><h3>Documentos</h3><p>Organização e armazenamento de documentos importantes com estrutura preparada para governança.</p></article>
+              <article class="feature-card reveal"><span class="feature-label">FIN</span><h3>Financeiro</h3><p>Controle financeiro, fluxo de caixa, contas a pagar, contas a receber e indicadores para acompanhar a saúde da empresa.</p></article>
+              <article class="feature-card reveal"><span class="feature-label">COM</span><h3>Vendas</h3><p>Organização de clientes, oportunidades, propostas e acompanhamento comercial com visão clara do funil.</p></article>
+              <article class="feature-card reveal"><span class="feature-label">RH</span><h3>Funcionários</h3><p>Informações dos colaboradores, documentos, processos internos e dados da equipe centralizados.</p></article>
+              <article class="feature-card reveal"><span class="feature-label">OPS</span><h3>Tarefas</h3><p>Controle de atividades, responsáveis, prazos e operações recorrentes da empresa.</p></article>
+              <article class="feature-card reveal"><span class="feature-label">EST</span><h3>Estoque</h3><p>Controle de produtos, entradas, saídas, movimentações e disponibilidade operacional.</p></article>
+              <article class="feature-card reveal"><span class="feature-label">BI</span><h3>Indicadores</h3><p>Visualização dos principais números da empresa em tempo real, com leitura rápida para a gestão.</p></article>
+              <article class="feature-card reveal"><span class="feature-label">REL</span><h3>Relatórios</h3><p>Relatórios para apoiar decisões estratégicas e transformar dados em orientação prática.</p></article>
+              <article class="feature-card reveal"><span class="feature-label">DOC</span><h3>Documentos</h3><p>Organização e armazenamento de documentos importantes com estrutura preparada para governança.</p></article>
             </div>
           </section>
 
@@ -215,9 +209,9 @@
                 <canvas id="revenueChart" width="720" height="260" aria-label="Gráfico de comparativo financeiro"></canvas>
                 <aside class="notifications-panel">
                   <h3>Notificações</h3>
-                  <p><i data-lucide="bell-ring"></i> 8 tarefas exigem revisão antes do fechamento.</p>
-                  <p><i data-lucide="circle-dollar-sign"></i> 3 contas a receber vencem hoje.</p>
-                  <p><i data-lucide="boxes"></i> 12 produtos estão abaixo do estoque mínimo.</p>
+                  <p>8 tarefas exigem revisão antes do fechamento.</p>
+                  <p>3 contas a receber vencem hoje.</p>
+                  <p>12 produtos estão abaixo do estoque mínimo.</p>
                 </aside>
               </div>
             </div>
@@ -225,7 +219,7 @@
 
           <section class="security-section" id="seguranca">
             <div class="security-visual reveal" aria-hidden="true">
-              <div class="security-core"><i data-lucide="shield-check"></i></div>
+              <div class="security-core"><span>LGPD</span></div>
               <span class="node n1"></span>
               <span class="node n2"></span>
               <span class="node n3"></span>
@@ -279,7 +273,6 @@
               <input type="hidden" name="purpose" value="Pré-cadastro para acesso às próximas etapas da plataforma Flow ERP">
               <div class="form-message" data-form-message="lead" aria-live="polite"></div>
               <button class="primary-button full" type="submit">
-                <i data-lucide="send"></i>
                 Enviar pré-cadastro
               </button>
             </form>
@@ -308,7 +301,7 @@
                 <button type="button">Esqueci minha senha</button>
               </div>
               <div class="form-message" data-form-message="login" aria-live="polite"></div>
-              <button class="primary-button full" type="submit"><i data-lucide="log-in"></i>Entrar</button>
+              <button class="primary-button full" type="submit">Entrar</button>
             </form>
             <p>Ainda não possui uma conta? <button type="button" data-view-link="signup">Cadastre-se</button></p>
             <div class="auth-prep">
@@ -337,7 +330,7 @@
               </div>
               <label class="checkbox-row"><input name="terms" type="checkbox" required><span>Aceito os Termos de Uso e estou ciente da Política de Privacidade.</span></label>
               <div class="form-message" data-form-message="signup" aria-live="polite"></div>
-              <button class="primary-button full" type="submit"><i data-lucide="user-check"></i>Criar minha conta</button>
+              <button class="primary-button full" type="submit">Criar minha conta</button>
             </form>
           </div>
         </section>
@@ -352,7 +345,7 @@
               <label>CPF<input name="cpf" inputmode="numeric" autocomplete="username" required></label>
               <label>Senha<input name="password" type="password" autocomplete="current-password" required></label>
               <div class="form-message" data-form-message="employee-login" aria-live="polite"></div>
-              <button class="primary-button full" type="submit"><i data-lucide="log-in"></i>Entrar</button>
+              <button class="primary-button full" type="submit">Entrar</button>
             </form>
             <p>Primeiro acesso: use seu CPF e a senha inicial <strong>1234</strong>.</p>
           </div>
@@ -367,7 +360,7 @@
               <label>Nova senha<input name="password" type="password" autocomplete="new-password" required></label>
               <label>Confirmar senha<input name="confirmPassword" type="password" autocomplete="new-password" required></label>
               <div class="form-message" data-form-message="employee-password" aria-live="polite"></div>
-              <button class="primary-button full" type="submit"><i data-lucide="key-round"></i>Salvar nova senha</button>
+              <button class="primary-button full" type="submit">Salvar nova senha</button>
             </form>
           </div>
         </section>
@@ -381,7 +374,7 @@
             </div>
             <div class="employee-actions">
               <button class="icon-button theme-toggle" type="button" data-theme-toggle aria-label="Alternar tema" title="Alternar tema"><i data-lucide="moon"></i></button>
-              <button class="secondary-button" type="button" data-employee-logout><i data-lucide="log-out"></i>Sair</button>
+              <button class="secondary-button" type="button" data-employee-logout>Sair</button>
             </div>
           </header>
           <main class="employee-main" data-employee-portal-content></main>
@@ -475,7 +468,7 @@
       <div data-app-dialog-content></div>
     </dialog>
 
-    <script src="assets/lucide.min.js?v=20260909-2"></script>
-    <script src="app.js?v=20260909-2"></script>
+    <script src="assets/lucide.min.js?v=20260909-3"></script>
+    <script src="app.js?v=20260909-3"></script>
   </body>
 </html>

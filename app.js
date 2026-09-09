@@ -466,7 +466,7 @@ function statusClass(value) {
 }
 
 function emptyState(text) {
-  return `<div class="empty-state"><div><i data-lucide="database"></i><p>${text}</p></div></div>`;
+  return `<div class="empty-state"><div><p>${text}</p></div></div>`;
 }
 
 function table(records, columns, storeName) {
@@ -543,10 +543,10 @@ function dashboardModule(data) {
       <div class="panel-head"><span>Resultado operacional</span><small>dados do banco local</small></div>
       <canvas id="erpChart" width="780" height="300" aria-label="Gráfico interativo de resultado operacional"></canvas>
       <div class="dashboard-actions">
-        <button class="quick-action" type="button" data-module-shortcut="financial"><i data-lucide="plus-circle"></i>Novo financeiro</button>
-        <button class="quick-action" type="button" data-module-shortcut="clients"><i data-lucide="user-plus"></i>Novo cliente</button>
-        <button class="quick-action" type="button" data-module-shortcut="tasks"><i data-lucide="list-plus"></i>Nova tarefa</button>
-        <button class="quick-action" type="button" data-module-shortcut="settings"><i data-lucide="building-2"></i>Minha empresa</button>
+        <button class="quick-action" type="button" data-module-shortcut="financial">Novo financeiro</button>
+        <button class="quick-action" type="button" data-module-shortcut="clients">Novo cliente</button>
+        <button class="quick-action" type="button" data-module-shortcut="tasks">Nova tarefa</button>
+        <button class="quick-action" type="button" data-module-shortcut="settings">Minha empresa</button>
       </div>
     </div>
     <aside class="erp-side-panel">
@@ -555,7 +555,7 @@ function dashboardModule(data) {
       <p><strong>Oportunidades</strong><span>${data.sales.length} no CRM</span></p>
       <p><strong>Documentos</strong><span>${data.documents.length} cadastrados</span></p>
       <p><strong>Notas fiscais</strong><span>${data.invoices.length} demos geradas</span></p>
-      <button class="secondary-button full" type="button" data-logout><i data-lucide="log-out"></i>Sair do demo</button>
+      <button class="secondary-button full" type="button" data-logout>Sair do demo</button>
     </aside>
   `;
 }
@@ -576,7 +576,7 @@ function financialModule(records) {
             ${selectField("Status", "status", ["Aberto", "Recebido", "Pago", "Atrasado"])}
           </div>
           <div class="module-message" data-module-message></div>
-          <button class="primary-button full" type="submit"><i data-lucide="save"></i>Salvar lançamento</button>
+          <button class="primary-button full" type="submit">Salvar lançamento</button>
         </form>
       </section>
       <section class="data-panel">
@@ -608,7 +608,7 @@ function salesModule(records) {
           </div>
           ${formField("Responsável", "owner", "text", appState.currentUser?.fullName || "", "required")}
           <div class="module-message" data-module-message></div>
-          <button class="primary-button full" type="submit"><i data-lucide="save"></i>Salvar oportunidade</button>
+          <button class="primary-button full" type="submit">Salvar oportunidade</button>
         </form>
       </section>
       <section class="data-panel">
@@ -640,7 +640,7 @@ function clientsModule(records) {
           </div>
           ${selectField("Status", "status", ["Ativo", "Em implantação", "Inativo"])}
           <div class="module-message" data-module-message></div>
-          <button class="primary-button full" type="submit"><i data-lucide="save"></i>Salvar cliente</button>
+          <button class="primary-button full" type="submit">Salvar cliente</button>
         </form>
       </section>
       <section class="data-panel">
@@ -698,7 +698,7 @@ function employeesModule(records, files, timeEntries, medicalCertificates, hrMes
           ${selectField("Status", "status", ["Ativo", "Férias", "Afastado", "Desligado"], "Ativo")}
           ${fileField("Anexar documentos do funcionário", "employeeDocuments", true)}
           <div class="module-message" data-module-message></div>
-          <button class="primary-button full" type="submit"><i data-lucide="save"></i>Salvar funcionário</button>
+          <button class="primary-button full" type="submit">Salvar funcionário</button>
         </form>
       </section>
       <section class="data-panel">
@@ -799,7 +799,7 @@ function employeesModule(records, files, timeEntries, medicalCertificates, hrMes
           </div>
           <label>Mensagem<textarea name="message" required></textarea></label>
           <div class="module-message" data-module-message></div>
-          <button class="primary-button full" type="submit"><i data-lucide="message-circle"></i>Enviar mensagem ao funcionário</button>
+          <button class="primary-button full" type="submit">Enviar mensagem ao funcionário</button>
         </form>
         <div class="chat-list">
           ${messages.length ? messages.map((message) => `
@@ -830,7 +830,7 @@ function inventoryModule(records) {
           </div>
           ${formField("Localização", "location", "text", "", "required")}
           <div class="module-message" data-module-message></div>
-          <button class="primary-button full" type="submit"><i data-lucide="save"></i>Salvar item</button>
+          <button class="primary-button full" type="submit">Salvar item</button>
         </form>
       </section>
       <section class="data-panel">
@@ -862,7 +862,7 @@ function tasksModule(records) {
             ${selectField("Status", "status", ["Pendente", "Em andamento", "Concluída"])}
           </div>
           <div class="module-message" data-module-message></div>
-          <button class="primary-button full" type="submit"><i data-lucide="save"></i>Salvar tarefa</button>
+          <button class="primary-button full" type="submit">Salvar tarefa</button>
         </form>
       </section>
       <section class="data-panel">
@@ -890,7 +890,7 @@ function documentsModule(records, folders) {
         <p>Crie subpastas para organizar contratos, faturas, notas fiscais, políticas internas e outros arquivos.</p>
         <form class="module-form compact-form" data-module-form="documentFolders" novalidate>
           ${formField("Nome da pasta", "name", "text", "", "required")}
-          <button class="secondary-button full" type="submit"><i data-lucide="folder-plus"></i>Criar pasta</button>
+          <button class="secondary-button full" type="submit">Criar pasta</button>
         </form>
 
         <h2>Novo documento</h2>
@@ -909,7 +909,7 @@ function documentsModule(records, folders) {
           </div>
           ${fileField("Anexar arquivo", "documentFile", false)}
           <div class="module-message" data-module-message></div>
-          <button class="primary-button full" type="submit"><i data-lucide="save"></i>Salvar documento</button>
+          <button class="primary-button full" type="submit">Salvar documento</button>
         </form>
       </section>
       <section class="data-panel">
@@ -917,11 +917,10 @@ function documentsModule(records, folders) {
         <div class="folder-grid">
           ${folders.length ? folders.map((folder) => `
             <article class="folder-card">
-              <i data-lucide="folder"></i>
               <strong>${escapeHtml(folder.name)}</strong>
               <span>${records.filter((record) => record.folderId === folder.id).length} documentos</span>
             </article>
-          `).join("") : `<article class="folder-card"><i data-lucide="folder"></i><strong>Geral</strong><span>Pasta padrão</span></article>`}
+          `).join("") : `<article class="folder-card"><strong>Geral</strong><span>Pasta padrão</span></article>`}
         </div>
         ${recordsWithStore.length ? `
           <div class="table-wrap">
@@ -1037,7 +1036,7 @@ function invoicesModule(records) {
           </div>
 
           <div class="module-message" data-module-message></div>
-          <button class="primary-button full" type="submit"><i data-lucide="receipt-text"></i>Gerar nota fiscal demo</button>
+          <button class="primary-button full" type="submit">Gerar nota fiscal demo</button>
         </form>
       </section>
       <section class="data-panel">
@@ -1123,9 +1122,9 @@ function buildInvoiceHtml(invoice, company) {
   <style>
     body{font-family:Arial,sans-serif;margin:0;background:#eef4f1;color:#092d23}
     .note{max-width:1040px;margin:28px auto;background:#fff;border:1px solid #cfdcd6;padding:28px}
-    header{display:grid;grid-template-columns:210px 1fr auto;gap:18px;align-items:center;border-bottom:3px solid #21e344;padding-bottom:18px}
+    header{display:grid;grid-template-columns:210px 1fr auto;gap:18px;align-items:center;border-bottom:3px solid #168a4a;padding-bottom:18px}
     img{max-width:190px;max-height:86px;object-fit:contain}
-    h1{margin:0;font-size:28px}.badge{background:#21e344;color:#062618;padding:10px 14px;font-weight:800}
+    h1{margin:0;font-size:28px}.badge{background:#168a4a;color:#fff;padding:10px 14px;font-weight:800}
     .demo{margin:18px 0;padding:12px;border:1px dashed #d7a31d;background:#fff9e8;color:#6f5104;font-weight:700}
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}.box{border:1px solid #dce5e0;padding:14px}
     h2{font-size:16px;margin:0 0 10px}p{margin:4px 0;line-height:1.45}
@@ -1318,7 +1317,7 @@ async function employeePortalModule() {
         <div class="punch-grid">
           ${employeePunchTypes().map((type) => {
             const done = todayEntries.find((entry) => entry.type === type);
-            return `<button class="${done ? "secondary-button" : "primary-button"}" type="button" data-punch-type="${type}" ${done ? "disabled" : ""}><i data-lucide="map-pin-check"></i>${done ? `${type}: ${done.time}` : type}</button>`;
+            return `<button class="${done ? "secondary-button" : "primary-button"}" type="button" data-punch-type="${type}" ${done ? "disabled" : ""}>${done ? `${type}: ${done.time}` : type}</button>`;
           }).join("")}
         </div>
         <div class="module-message" data-employee-message></div>
@@ -1333,14 +1332,14 @@ async function employeePortalModule() {
             </table>
           </div>
         ` : emptyState("Você ainda não registrou nenhuma batida.")}
-        <button class="secondary-button full" type="button" data-point-report="${employee.id}"><i data-lucide="file-down"></i>Baixar relatório em PDF</button>
+        <button class="secondary-button full" type="button" data-point-report="${employee.id}">Baixar relatório em PDF</button>
       </div>
       <div class="employee-card">
         <h2>Atestados médicos</h2>
         <form class="module-form compact-form" data-form="medical-certificate" enctype="multipart/form-data" novalidate>
           ${fileField("Anexar atestado", "certificate", false)}
           <label>Observação<textarea name="note" placeholder="Descreva o período ou detalhe para o RH"></textarea></label>
-          <button class="primary-button full" type="submit"><i data-lucide="upload"></i>Enviar atestado</button>
+          <button class="primary-button full" type="submit">Enviar atestado</button>
         </form>
         ${certificates.length ? certificates.map((file) => `<article class="file-card"><strong>${escapeHtml(file.fileName)}</strong>${fileActions(file)}</article>`).join("") : emptyState("Nenhum atestado enviado.")}
       </div>
@@ -1351,7 +1350,7 @@ async function employeePortalModule() {
         </div>
         <form class="module-form" data-form="employee-message" novalidate>
           <label>Mensagem ao RH<textarea name="message" required></textarea></label>
-          <button class="primary-button full" type="submit"><i data-lucide="send"></i>Enviar mensagem</button>
+          <button class="primary-button full" type="submit">Enviar mensagem</button>
         </form>
       </div>
     </section>
@@ -1468,7 +1467,7 @@ function settingsModule(company, privacyRequests) {
           <div class="settings-block">
             <h3>Identidade</h3>
             <div class="company-logo-upload">
-              <div class="company-logo-preview">${company.logoDataUrl ? `<img src="${company.logoDataUrl}" alt="Logotipo da empresa">` : `<i data-lucide="image-plus"></i><span>Logo da empresa</span>`}</div>
+              <div class="company-logo-preview">${company.logoDataUrl ? `<img src="${company.logoDataUrl}" alt="Logotipo da empresa">` : `<span>Logo da empresa</span>`}</div>
               ${fileField("Enviar logotipo da empresa", "companyLogo", false)}
             </div>
           </div>
@@ -1514,16 +1513,16 @@ function settingsModule(company, privacyRequests) {
             </div>
           </div>
           <div class="module-message" data-module-message></div>
-          <button class="primary-button full" type="submit"><i data-lucide="save"></i>Salvar dados da empresa</button>
+          <button class="primary-button full" type="submit">Salvar dados da empresa</button>
         </form>
       </section>
       <aside class="quick-panel">
         <h2>Central de Privacidade</h2>
         <p>Registre solicitações LGPD para acesso, alteração, exclusão ou revogação de consentimento.</p>
-        <button class="secondary-button full" type="button" data-privacy-request="Acesso aos dados"><i data-lucide="file-search"></i>Solicitar acesso aos dados</button>
-        <button class="secondary-button full" type="button" data-privacy-request="Alteração cadastral"><i data-lucide="pencil"></i>Solicitar alteração</button>
-        <button class="secondary-button full" type="button" data-privacy-request="Exclusão de dados"><i data-lucide="trash-2"></i>Solicitar exclusão</button>
-        <button class="secondary-button full" type="button" data-privacy-request="Revogação de consentimento"><i data-lucide="shield-x"></i>Revogar consentimento</button>
+        <button class="secondary-button full" type="button" data-privacy-request="Acesso aos dados">Solicitar acesso aos dados</button>
+        <button class="secondary-button full" type="button" data-privacy-request="Alteração cadastral">Solicitar alteração</button>
+        <button class="secondary-button full" type="button" data-privacy-request="Exclusão de dados">Solicitar exclusão</button>
+        <button class="secondary-button full" type="button" data-privacy-request="Revogação de consentimento">Revogar consentimento</button>
         <div class="privacy-request-list">
           ${privacyRequests.length ? privacyRequests.map((request) => `<article><strong>${escapeHtml(request.type)}</strong><span>${escapeHtml(request.status)} • ${new Date(request.createdAt).toLocaleString("pt-BR")}</span></article>`).join("") : "<article><strong>Nenhuma solicitação</strong><span>Use os botões acima quando precisar.</span></article>"}
         </div>
@@ -2052,7 +2051,7 @@ function drawChart(canvasId, labels, revenue, expenses) {
   const lineColor = styles.getPropertyValue("--line").trim() || "#dce5e0";
   const mutedColor = styles.getPropertyValue("--muted").trim() || "#6e7a75";
   const pointFill = styles.getPropertyValue("--white").trim() || "#fff";
-  const greenColor = styles.getPropertyValue("--green").trim() || "#21e344";
+  const greenColor = styles.getPropertyValue("--green").trim() || "#168a4a";
   const warningColor = styles.getPropertyValue("--warning").trim() || "#d7a31d";
   const ctx = canvas.getContext("2d");
   const width = canvas.width;
