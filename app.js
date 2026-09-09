@@ -1,5 +1,5 @@
 const DB_NAME = "FlowERPDatabase";
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 const stores = [
   "users",
   "companies",
@@ -16,6 +16,7 @@ const stores = [
   "invoices",
   "digitalSignatures",
   "timeEntries",
+  "timesheetSignatures",
   "medicalCertificates",
   "hrMessages",
   "permissions",
@@ -32,7 +33,10 @@ let appState = {
   currentUser: null,
   currentCompany: null,
   currentModule: "dashboard",
-  currentEmployee: null
+  currentEmployee: null,
+  attendanceEmployeeId: "",
+  attendanceMonth: new Date().toISOString().slice(0, 7),
+  attendanceSelectedDate: new Date().toISOString().slice(0, 10)
 };
 const chartState = {};
 
@@ -42,6 +46,7 @@ const moduleInfo = {
   sales: { title: "Vendas" },
   clients: { title: "Clientes" },
   employees: { title: "Funcionários" },
+  attendance: { title: "Ponto Eletronico" },
   inventory: { title: "Estoque" },
   tasks: { title: "Tarefas" },
   documents: { title: "Documentos" },
@@ -393,7 +398,7 @@ function companyFilter(records) {
 }
 
 async function dashboardData() {
-  const [clients, employees, financial, tasks, inventory, sales, docs, consents, employeeFiles, documentFolders, invoices, timeEntries, medicalCertificates, hrMessages] = await Promise.all([
+  const [clients, employees, financial, tasks, inventory, sales, docs, consents, employeeFiles, documentFolders, invoices, timeEntries, timesheetSignatures, medicalCertificates, hrMessages] = await Promise.all([
     repository.all("clients"),
     repository.all("employees"),
     repository.all("financial"),
@@ -406,6 +411,7 @@ async function dashboardData() {
     repository.all("documentFolders"),
     repository.all("invoices"),
     repository.all("timeEntries"),
+    repository.all("timesheetSignatures"),
     repository.all("medicalCertificates"),
     repository.all("hrMessages")
   ]);
@@ -425,6 +431,7 @@ async function dashboardData() {
     documentFolders: companyFilter(documentFolders),
     invoices: companyFilter(invoices),
     timeEntries: companyFilter(timeEntries),
+    timesheetSignatures: companyFilter(timesheetSignatures),
     medicalCertificates: companyFilter(medicalCertificates),
     hrMessages: companyFilter(hrMessages),
     revenue,
@@ -657,15 +664,11 @@ function clientsModule(records) {
   `;
 }
 
-function employeesModule(records, files, timeEntries, medicalCertificates, hrMessages) {
+function employeesModule(records, files, medicalCertificates, hrMessages) {
   const fileRows = files.map((file) => ({
     ...file,
     storeName: "employeeFiles",
     employeeName: records.find((employee) => employee.id === file.employeeId)?.name || "Funcionário"
-  }));
-  const timeRows = timeEntries.map((entry) => ({
-    ...entry,
-    employeeName: records.find((employee) => employee.id === entry.employeeId)?.name || "Funcionário"
   }));
   const certificateRows = medicalCertificates.map((file) => ({
     ...file,
@@ -687,10 +690,13 @@ function employeesModule(records, files, timeEntries, medicalCertificates, hrMes
           ${formField("Nome completo", "name", "text", "", "required")}
           <div class="form-grid">
             ${formField("CPF", "cpf", "text", "", "required")}
+            ${formField("Documento profissional", "professionalDocument", "text", "")}
+            ${formField("Matricula", "registrationNumber", "text", "")}
             ${formField("E-mail", "email", "email", "", "required")}
             ${formField("Telefone", "phone", "tel", "")}
             ${formField("Departamento", "department", "text", "", "required")}
             ${formField("Cargo", "role", "text", "", "required")}
+            ${formField("Jornada de trabalho", "workSchedule", "text", "08:00 as 18:00")}
             ${formField("Salário", "salary", "number", "", "min='0' step='0.01'")}
             ${formField("Data de admissão", "admissionDate", "date", "", "required")}
             ${formField("Data de demissão", "terminationDate", "date", "")}
@@ -719,7 +725,6 @@ function employeesModule(records, files, timeEntries, medicalCertificates, hrMes
                     <td>
                       <div class="row-actions">
                         <button class="mini-button" type="button" data-terminate-employee="${employee.id}">Desligar</button>
-                        <button class="mini-button" type="button" data-point-report="${employee.id}">PDF ponto</button>
                         <button class="mini-button danger" type="button" data-delete="employees" data-id="${employee.id}">Excluir</button>
                       </div>
                     </td>
@@ -748,26 +753,6 @@ function employeesModule(records, files, timeEntries, medicalCertificates, hrMes
             </table>
           </div>
         ` : emptyState("Anexe documentos no cadastro do funcionário para consultar e baixar depois.")}
-        <h2 class="subsection-title">Ponto eletrônico</h2>
-        ${timeRows.length ? `
-          <div class="table-wrap">
-            <table class="data-table">
-              <thead><tr><th>Funcionário</th><th>Data</th><th>Tipo</th><th>Horário</th><th>Endereço</th><th>Ações</th></tr></thead>
-              <tbody>
-                ${timeRows.map((entry) => `
-                  <tr>
-                    <td>${escapeHtml(entry.employeeName)}</td>
-                    <td>${escapeHtml(entry.date)}</td>
-                    <td>${escapeHtml(entry.type)}</td>
-                    <td><input class="table-input" type="time" value="${escapeHtml(entry.time)}" data-time-entry-input="${entry.id}"></td>
-                    <td>${escapeHtml(entry.address || entry.mapLabel || "")}</td>
-                    <td><button class="mini-button" type="button" data-save-time-entry="${entry.id}">Salvar horário</button></td>
-                  </tr>
-                `).join("")}
-              </tbody>
-            </table>
-          </div>
-        ` : emptyState("As batidas feitas no Acesso Funcionário aparecerão aqui para consulta, edição e relatório.")}
         <h2 class="subsection-title">Atestados médicos</h2>
         ${certificateRows.length ? `
           <div class="table-wrap">
@@ -810,6 +795,175 @@ function employeesModule(records, files, timeEntries, medicalCertificates, hrMes
             </article>
           `).join("") : emptyState("Nenhuma conversa aberta ainda.")}
         </div>
+      </section>
+    </div>
+  `;
+}
+
+function pointTypeConfig() {
+  return [
+    { key: "entry", label: "Entrada" },
+    { key: "lunchOut", label: "Saida do almoco" },
+    { key: "lunchReturn", label: "Retorno do almoco" },
+    { key: "exit", label: "Saida" }
+  ];
+}
+
+function monthRange(month) {
+  const [year, rawMonth] = String(month || new Date().toISOString().slice(0, 7)).split("-").map(Number);
+  const safeYear = year || new Date().getFullYear();
+  const safeMonth = rawMonth || new Date().getMonth() + 1;
+  const last = new Date(safeYear, safeMonth, 0).getDate();
+  return {
+    start: `${safeYear}-${String(safeMonth).padStart(2, "0")}-01`,
+    end: `${safeYear}-${String(safeMonth).padStart(2, "0")}-${String(last).padStart(2, "0")}`,
+    year: safeYear,
+    monthIndex: safeMonth - 1,
+    days: last
+  };
+}
+
+function eachDate(startDate, endDate) {
+  const dates = [];
+  const cursor = new Date(`${startDate}T12:00:00`);
+  const end = new Date(`${endDate}T12:00:00`);
+  while (cursor <= end) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return dates;
+}
+
+function dateBr(date) {
+  if (!date) return "";
+  const [year, month, day] = String(date).split("-");
+  return `${day}/${month}/${year}`;
+}
+
+function monthLabel(month) {
+  const range = monthRange(month);
+  return new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(new Date(range.year, range.monthIndex, 1));
+}
+
+function entriesByType(entries) {
+  return Object.fromEntries(pointTypeConfig().map((type) => [
+    type.key,
+    entries.find((entry) => entry.type === type.label)
+  ]));
+}
+
+function attendanceModule(employees, timeEntries, signatures) {
+  const selectedEmployee = employees.find((employee) => employee.id === appState.attendanceEmployeeId) || employees[0];
+  const month = appState.attendanceMonth || new Date().toISOString().slice(0, 7);
+  const range = monthRange(month);
+  const selectedDate = appState.attendanceSelectedDate?.startsWith(month) ? appState.attendanceSelectedDate : range.start;
+  appState.attendanceEmployeeId = selectedEmployee?.id || "";
+  appState.attendanceSelectedDate = selectedDate;
+
+  if (!employees.length) {
+    return `
+      <section class="report-panel">
+        <h2>Ponto Eletronico</h2>
+        ${emptyState("Cadastre um funcionario antes de controlar o ponto eletronico.")}
+      </section>
+    `;
+  }
+
+  const employeeEntries = timeEntries
+    .filter((entry) => entry.employeeId === selectedEmployee.id)
+    .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+  const dayEntries = employeeEntries.filter((entry) => entry.date === selectedDate);
+  const dayMap = entriesByType(dayEntries);
+  const datesWithEntries = new Set(employeeEntries.map((entry) => entry.date));
+  const monthSignatures = signatures
+    .filter((signature) => signature.employeeId === selectedEmployee.id)
+    .sort((a, b) => new Date(b.signedAt || b.createdAt) - new Date(a.signedAt || a.createdAt));
+  const firstOffset = new Date(range.year, range.monthIndex, 1).getDay();
+  const calendarCells = [
+    ...Array.from({ length: firstOffset }, (_, index) => `<span class="calendar-empty" aria-hidden="true" data-offset="${index}"></span>`),
+    ...Array.from({ length: range.days }, (_, index) => {
+      const day = index + 1;
+      const date = `${month}-${String(day).padStart(2, "0")}`;
+      const classes = ["calendar-day"];
+      if (date === selectedDate) classes.push("selected");
+      if (datesWithEntries.has(date)) classes.push("has-entry");
+      return `<button class="${classes.join(" ")}" type="button" data-attendance-date="${date}"><strong>${day}</strong><span>${datesWithEntries.has(date) ? "Com ponto" : "Sem ponto"}</span></button>`;
+    })
+  ].join("");
+
+  return `
+    <div class="attendance-layout">
+      <section class="module-panel attendance-control">
+        <div class="panel-head">
+          <div>
+            <h2>Ponto Eletronico</h2>
+            <p>Selecione o funcionario, escolha o mes e abra o dia para corrigir ou incluir batidas.</p>
+          </div>
+        </div>
+        <div class="form-grid attendance-filters">
+          <label>Funcionario
+            <select data-attendance-employee>
+              ${employees.map((employee) => `<option value="${employee.id}" ${employee.id === selectedEmployee.id ? "selected" : ""}>${escapeHtml(employee.name)} - ${escapeHtml(employee.cpf || "")}</option>`).join("")}
+            </select>
+          </label>
+          ${formField("Mes", "attendanceMonth", "month", month, "data-attendance-month")}
+        </div>
+        <div class="attendance-calendar" aria-label="Calendario de ponto">
+          ${["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sab"].map((day) => `<span class="calendar-weekday">${day}</span>`).join("")}
+          ${calendarCells}
+        </div>
+      </section>
+
+      <section class="data-panel attendance-detail">
+        <h2>${escapeHtml(selectedEmployee.name)} - ${dateBr(selectedDate)}</h2>
+        <p>Edite os horarios existentes ou preencha os campos vazios para criar batidas que nao foram registradas.</p>
+        <form class="module-form" data-module-form="attendanceDay" novalidate>
+          <input type="hidden" name="employeeId" value="${selectedEmployee.id}">
+          <input type="hidden" name="date" value="${selectedDate}">
+          <div class="attendance-edit-list">
+            ${pointTypeConfig().map((type) => {
+              const entry = dayMap[type.key];
+              return `
+                <div class="attendance-edit-row">
+                  <strong>${type.label}</strong>
+                  <input type="time" name="${type.key}Time" value="${escapeHtml(entry?.time || "")}">
+                  <input type="text" name="${type.key}Address" value="${escapeHtml(entry?.address || entry?.mapLabel || "Ajuste manual pelo RH")}" placeholder="Endereco ou observacao">
+                </div>
+              `;
+            }).join("")}
+          </div>
+          <div class="module-message" data-module-message></div>
+          <button class="primary-button full" type="submit">Salvar ponto do dia</button>
+        </form>
+
+        <h2 class="subsection-title">Baixar espelho de ponto</h2>
+        <form class="module-form compact-form" data-module-form="attendanceReport" novalidate>
+          <input type="hidden" name="employeeId" value="${selectedEmployee.id}">
+          <div class="form-grid">
+            ${formField("De", "startDate", "date", range.start, "required")}
+            ${formField("Ate", "endDate", "date", range.end, "required")}
+          </div>
+          <button class="secondary-button full" type="submit">Baixar espelho de ponto</button>
+        </form>
+
+        <h2 class="subsection-title">Espelhos assinados</h2>
+        ${monthSignatures.length ? `
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Periodo</th><th>Assinado em</th><th>Status</th><th>Acoes</th></tr></thead>
+              <tbody>
+                ${monthSignatures.map((signature) => `
+                  <tr>
+                    <td>${dateBr(signature.periodStart)} ate ${dateBr(signature.periodEnd)}</td>
+                    <td>${new Date(signature.signedAt || signature.createdAt).toLocaleString("pt-BR")}</td>
+                    <td><span class="status-pill">Assinado</span></td>
+                    <td><button class="mini-button" type="button" data-download-signed-timesheet="${signature.id}">Baixar assinado</button></td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        ` : emptyState("Quando o funcionario assinar o espelho do mes, o registro aparecera aqui para baixar pela empresa.")}
       </section>
     </div>
   `;
@@ -1252,26 +1406,113 @@ function makeSimplePdf(lines, filename) {
   return pages;
 }
 
-async function downloadPointReport(employeeId) {
+function buildTimesheetHtml(employee, company, entries, periodStart, periodEnd, signature) {
+  const logo = company?.logoDataUrl || new URL("assets/flow-logo.png", window.location.href).href;
+  const entriesForPeriod = entries.filter((entry) => entry.date >= periodStart && entry.date <= periodEnd);
+  const rows = eachDate(periodStart, periodEnd).map((date) => {
+    const dayEntries = entriesForPeriod.filter((entry) => entry.date === date);
+    const byType = Object.fromEntries(pointTypeConfig().map((type) => [type.label, dayEntries.find((entry) => entry.type === type.label)]));
+    const location = dayEntries.map((entry) => entry.address || entry.mapLabel || "").filter(Boolean)[0] || "";
+    return `
+      <tr>
+        <td>${dateBr(date)}</td>
+        ${pointTypeConfig().map((type) => `<td>${escapeHtml(byType[type.label]?.time || "-")}</td>`).join("")}
+        <td>${escapeHtml(location || "-")}</td>
+        <td>${dayEntries.some((entry) => entry.editedByHr || entry.manual) ? "Ajustado pelo RH" : ""}</td>
+      </tr>
+    `;
+  }).join("");
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Espelho de Ponto - ${escapeHtml(employee?.name || "Funcionario")}</title>
+  <style>
+    body{font-family:Arial,sans-serif;margin:0;background:#eef4f1;color:#092d23}
+    .sheet{max-width:1120px;margin:24px auto;background:#fff;border:1px solid #cfdcd6;padding:28px}
+    header{display:grid;grid-template-columns:200px 1fr;gap:18px;align-items:center;border-bottom:3px solid #168a4a;padding-bottom:18px}
+    img{max-width:180px;max-height:82px;object-fit:contain}h1{margin:0;font-size:26px}p{margin:4px 0;line-height:1.45}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}.box{border:1px solid #dce5e0;padding:14px}
+    table{width:100%;border-collapse:collapse;margin-top:18px}th,td{border:1px solid #dce5e0;padding:8px;text-align:left;font-size:12px}th{background:#f3f7f5}
+    .sign{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:24px}.line{border-top:1px solid #092d23;padding-top:8px;text-align:center}
+    .no-print{margin-top:18px}.no-print button{min-height:38px;padding:0 14px;border:1px solid #168a4a;background:#168a4a;color:#fff;font-weight:700}
+    @media print{body{background:#fff}.sheet{margin:0;border:0}.no-print{display:none}}
+  </style>
+</head>
+<body>
+  <main class="sheet">
+    <header>
+      <img src="${logo}" alt="Logotipo da empresa">
+      <div>
+        <h1>Espelho de Ponto</h1>
+        <p><strong>Periodo:</strong> ${dateBr(periodStart)} ate ${dateBr(periodEnd)}</p>
+        <p><strong>Gerado em:</strong> ${new Date().toLocaleString("pt-BR")}</p>
+      </div>
+    </header>
+    <section class="grid">
+      <div class="box">
+        <h2>Empresa</h2>
+        <p><strong>${escapeHtml(company?.name || "")}</strong></p>
+        <p>CNPJ: ${escapeHtml(company?.cnpj || "")}</p>
+        <p>${escapeHtml(company?.address || "")}</p>
+        <p>${escapeHtml(company?.city || "")} - ${escapeHtml(company?.state || "")}</p>
+      </div>
+      <div class="box">
+        <h2>Funcionario</h2>
+        <p><strong>${escapeHtml(employee?.name || "")}</strong></p>
+        <p>CPF: ${escapeHtml(employee?.cpf || "")}</p>
+        <p>Documento profissional: ${escapeHtml(employee?.professionalDocument || employee?.registrationNumber || "Nao informado")}</p>
+        <p>Cargo: ${escapeHtml(employee?.role || "")} - Departamento: ${escapeHtml(employee?.department || "")}</p>
+        <p>Admissao: ${dateBr(employee?.admissionDate || "")} - Jornada: ${escapeHtml(employee?.workSchedule || "")}</p>
+      </div>
+    </section>
+    <table>
+      <thead><tr><th>Data</th><th>Entrada</th><th>Saida almoco</th><th>Retorno almoco</th><th>Saida</th><th>Local</th><th>Observacao</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <section class="sign">
+      <div class="line">Assinatura do funcionario<br>${signature ? `Assinado digitalmente em ${new Date(signature.signedAt || signature.createdAt).toLocaleString("pt-BR")}` : "Pendente"}</div>
+      <div class="line">Responsavel da empresa</div>
+    </section>
+    <p class="no-print"><button onclick="window.print()">Imprimir ou salvar em PDF</button></p>
+  </main>
+</body>
+</html>`;
+}
+
+function openTimesheetHtml(html, filename) {
+  const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+  const win = window.open("", "_blank");
+  if (win) {
+    win.document.write(html);
+    win.document.close();
+  }
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+async function downloadPointReport(employeeId, startDate = "", endDate = "", signatureId = "") {
   const employee = await repository.get("employees", employeeId);
+  if (!employee) {
+    toast("Funcionario nao encontrado para gerar o espelho.");
+    return;
+  }
+  const company = appState.currentCompany || await repository.get("companies", employee.companyId);
+  const fallbackRange = monthRange(new Date().toISOString().slice(0, 7));
+  const periodStart = startDate || fallbackRange.start;
+  const periodEnd = endDate || fallbackRange.end;
   const entries = (await repository.all("timeEntries"))
     .filter((entry) => entry.employeeId === employeeId)
     .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
-  const lines = [
-    "Flow ERP - Relatorio de Ponto Eletronico",
-    `Empresa: ${appState.currentCompany?.name || ""}`,
-    `Funcionario: ${employee?.name || ""}`,
-    `CPF: ${employee?.cpf || ""}`,
-    `Cargo: ${employee?.role || ""}`,
-    `Gerado em: ${new Date().toLocaleString("pt-BR")}`,
-    "",
-    "Batidas:"
-  ];
-  entries.forEach((entry) => {
-    lines.push(`${entry.date} - ${entry.type} - ${entry.time} - ${entry.address || entry.mapLabel || ""}`);
-  });
-  if (!entries.length) lines.push("Nenhuma batida registrada.");
-  makeSimplePdf(lines, `relatorio-ponto-${digitsOnly(employee?.cpf || "funcionario")}.pdf`);
+  const signature = signatureId ? await repository.get("timesheetSignatures", signatureId) : (await repository.all("timesheetSignatures"))
+    .find((item) => item.employeeId === employeeId && item.periodStart === periodStart && item.periodEnd === periodEnd);
+  const html = buildTimesheetHtml(employee, company, entries, periodStart, periodEnd, signature);
+  openTimesheetHtml(html, `espelho-ponto-${digitsOnly(employee.cpf || employee.name)}-${periodStart}-${periodEnd}.html`);
 }
 
 async function getEmployeeContext() {
@@ -1288,7 +1529,7 @@ async function getEmployeeContext() {
 }
 
 function employeePunchTypes() {
-  return ["Entrada", "Saída do almoço", "Retorno do almoço", "Saída"];
+  return pointTypeConfig().map((type) => type.label);
 }
 
 async function employeePortalModule() {
@@ -1300,13 +1541,16 @@ async function employeePortalModule() {
   const { employee } = context;
   document.querySelector("[data-employee-name]").textContent = employee.name || "colaborador";
   const today = new Date().toISOString().slice(0, 10);
-  const [allEntries, allMessages, allCertificates] = await Promise.all([
+  const [allEntries, allMessages, allCertificates, allSignatures] = await Promise.all([
     repository.all("timeEntries"),
     repository.all("hrMessages"),
-    repository.all("medicalCertificates")
+    repository.all("medicalCertificates"),
+    repository.all("timesheetSignatures")
   ]);
   const entries = allEntries.filter((entry) => entry.employeeId === employee.id).sort((a, b) => `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`));
   const todayEntries = entries.filter((entry) => entry.date === today);
+  const currentRange = monthRange(today.slice(0, 7));
+  const currentSignature = allSignatures.find((signature) => signature.employeeId === employee.id && signature.periodStart === currentRange.start && signature.periodEnd === currentRange.end);
   const messages = allMessages.filter((message) => message.employeeId === employee.id).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
   const certificates = allCertificates.filter((file) => file.employeeId === employee.id).map((file) => ({ ...file, storeName: "medicalCertificates" }));
   return `
@@ -1332,7 +1576,13 @@ async function employeePortalModule() {
             </table>
           </div>
         ` : emptyState("Você ainda não registrou nenhuma batida.")}
-        <button class="secondary-button full" type="button" data-point-report="${employee.id}">Baixar relatório em PDF</button>
+        <button class="secondary-button full" type="button" data-point-report="${employee.id}" data-report-start="${currentRange.start}" data-report-end="${currentRange.end}">Baixar espelho do mes</button>
+      </div>
+      <div class="employee-card">
+        <h2>Espelho do mes</h2>
+        <p>${currentSignature ? `Assinado em ${new Date(currentSignature.signedAt || currentSignature.createdAt).toLocaleString("pt-BR")}.` : `Confira suas batidas de ${monthLabel(today.slice(0, 7))} e assine para o RH fechar o periodo.`}</p>
+        <button class="${currentSignature ? "secondary-button" : "primary-button"} full" type="button" data-sign-timesheet ${currentSignature ? "disabled" : ""}>${currentSignature ? "Espelho assinado" : "Assinar espelho do mes"}</button>
+        <button class="secondary-button full" type="button" data-point-report="${employee.id}" data-report-start="${currentRange.start}" data-report-end="${currentRange.end}" data-signature-id="${currentSignature?.id || ""}">Baixar minha copia</button>
       </div>
       <div class="employee-card">
         <h2>Atestados médicos</h2>
@@ -1548,7 +1798,8 @@ async function renderModule(module = appState.currentModule) {
   if (module === "financial") content.innerHTML = financialModule(data.financial);
   if (module === "sales") content.innerHTML = salesModule(data.sales);
   if (module === "clients") content.innerHTML = clientsModule(data.clients);
-  if (module === "employees") content.innerHTML = employeesModule(data.employees, data.employeeFiles, data.timeEntries, data.medicalCertificates, data.hrMessages);
+  if (module === "employees") content.innerHTML = employeesModule(data.employees, data.employeeFiles, data.medicalCertificates, data.hrMessages);
+  if (module === "attendance") content.innerHTML = attendanceModule(data.employees, data.timeEntries, data.timesheetSignatures);
   if (module === "inventory") content.innerHTML = inventoryModule(data.inventory);
   if (module === "tasks") content.innerHTML = tasksModule(data.tasks);
   if (module === "documents") content.innerHTML = documentsModule(data.documents, data.documentFolders);
@@ -1845,6 +2096,30 @@ async function handleEmployeeMessage(form) {
   await renderEmployeePortal();
 }
 
+async function signCurrentTimesheet() {
+  const context = await getEmployeeContext();
+  if (!context) return;
+  const range = monthRange(new Date().toISOString().slice(0, 7));
+  const existing = (await repository.all("timesheetSignatures"))
+    .find((signature) => signature.employeeId === context.employee.id && signature.periodStart === range.start && signature.periodEnd === range.end);
+  if (existing) {
+    toast("Espelho do mes ja assinado.");
+    await renderEmployeePortal();
+    return;
+  }
+  await repository.add("timesheetSignatures", {
+    companyId: context.company.id,
+    employeeId: context.employee.id,
+    periodStart: range.start,
+    periodEnd: range.end,
+    signedAt: new Date().toISOString(),
+    status: "Assinado pelo funcionario"
+  });
+  await repository.add("logs", { companyId: context.company.id, employeeId: context.employee.id, type: "timesheet_signature", detail: `${range.start} a ${range.end}` });
+  toast("Espelho de ponto assinado.");
+  await renderEmployeePortal();
+}
+
 async function handleModuleForm(form) {
   const module = form.dataset.moduleForm;
   const data = collectForm(form);
@@ -1886,6 +2161,45 @@ async function handleModuleForm(form) {
     form.reset();
     toast("Mensagem enviada ao funcionário.");
     await renderModule("employees");
+    return;
+  }
+
+  if (module === "attendanceDay") {
+    const entries = await repository.all("timeEntries");
+    await Promise.all(pointTypeConfig().map(async (type) => {
+      const time = data[`${type.key}Time`];
+      if (!time) return;
+      const address = data[`${type.key}Address`] || "Ajuste manual pelo RH";
+      const existing = entries.find((entry) => entry.employeeId === data.employeeId && entry.date === data.date && entry.type === type.label);
+      const payload = {
+        companyId: appState.currentCompany.id,
+        employeeId: data.employeeId,
+        type: type.label,
+        date: data.date,
+        time,
+        timestamp: `${data.date}T${time}:00`,
+        address,
+        mapLabel: address,
+        manual: true,
+        editedByHr: true,
+        userId: appState.currentUser.id
+      };
+      if (existing) await repository.put("timeEntries", { ...existing, ...payload });
+      else await repository.add("timeEntries", payload);
+    }));
+    await repository.add("logs", { companyId: appState.currentCompany.id, userId: appState.currentUser.id, type: "attendance_day_update", detail: `${data.employeeId} ${data.date}` });
+    toast("Ponto do dia salvo.");
+    await renderModule("attendance");
+    return;
+  }
+
+  if (module === "attendanceReport") {
+    if (!data.startDate || !data.endDate || data.startDate > data.endDate) {
+      moduleMessage("Selecione um periodo valido para baixar o espelho.", "error");
+      return;
+    }
+    await downloadPointReport(data.employeeId, data.startDate, data.endDate);
+    moduleMessage("Espelho gerado. Use o botao imprimir para salvar como PDF.", "success");
     return;
   }
 
@@ -2128,10 +2442,13 @@ function openAppDialog(title, body) {
 
 async function showNotifications() {
   const data = await dashboardData();
+  const range = monthRange(new Date().toISOString().slice(0, 7));
+  const unsignedTimesheets = data.employees.filter((employee) => employee.status !== "Desligado" && !data.timesheetSignatures.some((signature) => signature.employeeId === employee.id && signature.periodStart === range.start && signature.periodEnd === range.end)).length;
   openAppDialog("Notificações", `
     <p><strong>${data.tasks.filter((task) => task.status !== "Concluída").length}</strong> tarefas pendentes para acompanhar.</p>
     <p><strong>${data.inventory.filter((item) => Number(item.quantity) <= Number(item.minQuantity)).length}</strong> itens abaixo ou próximos do estoque mínimo.</p>
     <p><strong>${data.sales.filter((sale) => sale.stage !== "Ganho" && sale.stage !== "Perdido").length}</strong> oportunidades comerciais em andamento.</p>
+    <p><strong>${unsignedTimesheets}</strong> espelhos de ponto do mes aguardando assinatura.</p>
   `);
 }
 
@@ -2279,8 +2596,22 @@ function bindEvents() {
       }
     }
 
+    const attendanceDate = event.target.closest("[data-attendance-date]");
+    if (attendanceDate) {
+      appState.attendanceSelectedDate = attendanceDate.dataset.attendanceDate;
+      await renderModule("attendance");
+    }
+
     const pointReport = event.target.closest("[data-point-report]");
-    if (pointReport) await downloadPointReport(pointReport.dataset.pointReport);
+    if (pointReport) await downloadPointReport(pointReport.dataset.pointReport, pointReport.dataset.reportStart || "", pointReport.dataset.reportEnd || "", pointReport.dataset.signatureId || "");
+
+    const signedTimesheet = event.target.closest("[data-download-signed-timesheet]");
+    if (signedTimesheet) {
+      const signature = await repository.get("timesheetSignatures", signedTimesheet.dataset.downloadSignedTimesheet);
+      if (signature) await downloadPointReport(signature.employeeId, signature.periodStart, signature.periodEnd, signature.id);
+    }
+
+    if (event.target.closest("[data-sign-timesheet]")) await signCurrentTimesheet();
 
     const addInvoiceItem = event.target.closest("[data-add-invoice-item]");
     if (addInvoiceItem) {
@@ -2329,6 +2660,18 @@ function bindEvents() {
 
   document.querySelectorAll("[data-policy]").forEach((button) => {
     button.addEventListener("click", () => openPolicy(button.dataset.policy));
+  });
+
+  document.addEventListener("change", async (event) => {
+    if (event.target.matches("[data-attendance-employee]")) {
+      appState.attendanceEmployeeId = event.target.value;
+      await renderModule("attendance");
+    }
+    if (event.target.matches("[data-attendance-month]")) {
+      appState.attendanceMonth = event.target.value || new Date().toISOString().slice(0, 7);
+      appState.attendanceSelectedDate = `${appState.attendanceMonth}-01`;
+      await renderModule("attendance");
+    }
   });
 
   document.querySelector("[data-policy-close]").addEventListener("click", () => {

@@ -1159,6 +1159,13 @@ textarea.invalid {
   width: 100%;
 }
 
+.attendance-layout {
+  display: grid;
+  grid-template-columns: minmax(420px, .9fr) minmax(0, 1.1fr);
+  gap: 16px;
+  width: 100%;
+}
+
 .module-panel,
 .data-panel,
 .quick-panel,
@@ -1217,6 +1224,79 @@ textarea.invalid {
 
 .module-form .form-grid.three {
   grid-template-columns: repeat(3, 1fr);
+}
+
+.attendance-filters {
+  margin: 14px 0;
+}
+
+.attendance-calendar {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.calendar-weekday {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+  text-align: center;
+}
+
+.calendar-empty,
+.calendar-day {
+  min-height: 76px;
+  border-radius: var(--radius);
+}
+
+.calendar-day {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  padding: 8px;
+  text-align: left;
+}
+
+.calendar-day strong,
+.calendar-day span {
+  display: block;
+}
+
+.calendar-day span {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.calendar-day.has-entry {
+  border-color: rgba(22, 138, 74, .42);
+  background: rgba(22, 138, 74, .07);
+}
+
+.calendar-day.selected {
+  border-color: var(--green);
+  box-shadow: inset 0 0 0 2px rgba(22, 138, 74, .22);
+}
+
+.attendance-edit-list {
+  display: grid;
+  gap: 10px;
+}
+
+.attendance-edit-row {
+  display: grid;
+  grid-template-columns: 160px 130px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--soft);
+}
+
+.attendance-edit-row strong {
+  color: var(--green-ink);
 }
 
 .invoice-items {
@@ -1885,6 +1965,8 @@ html[data-theme="dark"] .privacy-request-list article,
 html[data-theme="dark"] .chat-card,
 html[data-theme="dark"] .file-card,
 html[data-theme="dark"] .invoice-item-row,
+html[data-theme="dark"] .calendar-day,
+html[data-theme="dark"] .attendance-edit-row,
 html[data-theme="dark"] .empty-state {
   background: #0e211a;
   border-color: var(--line);
@@ -2063,6 +2145,7 @@ html[data-theme="dark"] .header-actions.open {
   .analytics-layout,
   .module-grid,
   .invoice-layout,
+  .attendance-layout,
   .settings-layout {
     grid-template-columns: 1fr;
   }
@@ -2170,10 +2253,20 @@ html[data-theme="dark"] .header-actions.open {
   .folder-grid,
   .company-logo-upload,
   .invoice-item-row,
+  .attendance-edit-row,
   .employee-header,
   .employee-panel,
   .punch-grid {
     grid-template-columns: 1fr;
+  }
+
+  .attendance-calendar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .calendar-weekday,
+  .calendar-empty {
+    display: none;
   }
 
   .employee-header {
