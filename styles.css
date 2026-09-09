@@ -16,6 +16,19 @@
   color-scheme: light;
 }
 
+html[data-theme="dark"] {
+  --green-deep: #5df082;
+  --green-ink: #dfffe8;
+  --ink: #eef9f3;
+  --graphite: #c7d6cf;
+  --muted: #9dafaa;
+  --line: #25473d;
+  --soft: #10261f;
+  --white: #0b1713;
+  --shadow: 0 24px 70px rgba(0, 0, 0, .38);
+  color-scheme: dark;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -174,6 +187,16 @@ a {
   background: var(--white);
   border: 1px solid var(--line);
   color: var(--green-deep);
+}
+
+.theme-toggle {
+  flex: 0 0 auto;
+}
+
+.auth-theme-toggle {
+  position: absolute;
+  right: 18px;
+  top: 18px;
 }
 
 .primary-button:hover,
@@ -1593,6 +1616,12 @@ textarea.invalid {
   color: var(--green-ink);
 }
 
+.employee-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .employee-main {
   padding: clamp(22px, 5vw, 58px);
 }
@@ -1736,6 +1765,186 @@ textarea.invalid {
 
 @keyframes skeleton {
   to { background-position: -200% 0; }
+}
+
+html[data-theme="dark"] body {
+  background: #08110e;
+}
+
+html[data-theme="dark"] .site-header,
+html[data-theme="dark"] .employee-header {
+  background: rgba(8, 17, 14, .9);
+  border-color: rgba(37, 71, 61, .9);
+}
+
+html[data-theme="dark"] .site-header.scrolled {
+  background: rgba(8, 17, 14, .96);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, .28);
+}
+
+html[data-theme="dark"] .brand img,
+html[data-theme="dark"] .auth-card img,
+html[data-theme="dark"] .employee-header img {
+  padding: 8px;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, .96);
+}
+
+html[data-theme="dark"] .hero-section {
+  background:
+    linear-gradient(114deg, rgba(8,17,14,.98) 0%, rgba(10,25,19,.94) 45%, rgba(13,48,31,.82) 100%),
+    radial-gradient(circle at 78% 32%, rgba(33, 227, 68, .18), transparent 34%),
+    linear-gradient(180deg, #08110e 0%, #0d1d17 100%);
+}
+
+html[data-theme="dark"] .hero-section::after {
+  background: linear-gradient(180deg, transparent, #08110e 76%);
+}
+
+html[data-theme="dark"] .trust-strip,
+html[data-theme="dark"] .lead-form,
+html[data-theme="dark"] .auth-card,
+html[data-theme="dark"] .module-panel,
+html[data-theme="dark"] .data-panel,
+html[data-theme="dark"] .quick-panel,
+html[data-theme="dark"] .report-panel,
+html[data-theme="dark"] .erp-chart,
+html[data-theme="dark"] .erp-side-panel,
+html[data-theme="dark"] .employee-card,
+html[data-theme="dark"] .policy-dialog {
+  background: rgba(11, 23, 19, .96);
+  border-color: var(--line);
+}
+
+html[data-theme="dark"] .dashboard-app.active,
+html[data-theme="dark"] .employee-portal.active,
+html[data-theme="dark"] .auth-view {
+  background:
+    linear-gradient(130deg, rgba(8,17,14,.98), rgba(13,29,23,.94)),
+    radial-gradient(circle at 72% 22%, rgba(33,227,68,.16), transparent 31%);
+}
+
+html[data-theme="dark"] .erp-sidebar,
+html[data-theme="dark"] .site-footer,
+html[data-theme="dark"] .toast {
+  background: #031b15;
+}
+
+html[data-theme="dark"] input,
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea,
+html[data-theme="dark"] .module-form textarea,
+html[data-theme="dark"] .table-input {
+  background: #0e211a;
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder {
+  color: #7f948b;
+}
+
+html[data-theme="dark"] .secondary-button,
+html[data-theme="dark"] .icon-button,
+html[data-theme="dark"] .mini-button,
+html[data-theme="dark"] .quick-action {
+  background: #0e211a;
+  color: var(--green-deep);
+  border-color: var(--line);
+}
+
+html[data-theme="dark"] .text-button,
+html[data-theme="dark"] .privacy-links button,
+html[data-theme="dark"] .auth-card p button,
+html[data-theme="dark"] .auth-options button {
+  color: var(--green-deep);
+}
+
+html[data-theme="dark"] .dashboard-card,
+html[data-theme="dark"] .dashboard-3d,
+html[data-theme="dark"] .metric-tile,
+html[data-theme="dark"] .chart-panel,
+html[data-theme="dark"] .workflow-panel,
+html[data-theme="dark"] .feature-card,
+html[data-theme="dark"] .security-card,
+html[data-theme="dark"] .timeline-card,
+html[data-theme="dark"] .product-dashboard,
+html[data-theme="dark"] .module-stat,
+html[data-theme="dark"] .trust-strip span,
+html[data-theme="dark"] .erp-kpis article,
+html[data-theme="dark"] .kpi-row article,
+html[data-theme="dark"] .folder-card,
+html[data-theme="dark"] .settings-block,
+html[data-theme="dark"] .company-logo-preview,
+html[data-theme="dark"] .report-metrics article,
+html[data-theme="dark"] .privacy-request-list article,
+html[data-theme="dark"] .chat-card,
+html[data-theme="dark"] .file-card,
+html[data-theme="dark"] .invoice-item-row,
+html[data-theme="dark"] .empty-state {
+  background: #0e211a;
+  border-color: var(--line);
+}
+
+html[data-theme="dark"] canvas {
+  background: linear-gradient(180deg, #0b1713, #10261f);
+}
+
+html[data-theme="dark"] .dashboard-topbar,
+html[data-theme="dark"] .notifications-panel {
+  background: #031b15;
+  color: rgba(255, 255, 255, .86);
+}
+
+html[data-theme="dark"] .kpi-row small,
+html[data-theme="dark"] .erp-kpis small {
+  color: #72f0a0;
+}
+
+html[data-theme="dark"] .data-table {
+  background: #0e211a;
+}
+
+html[data-theme="dark"] .data-table th {
+  background: #10261f;
+  color: var(--green-deep);
+}
+
+html[data-theme="dark"] .status-pill {
+  background: rgba(33, 227, 68, .16);
+  color: var(--green-deep);
+}
+
+html[data-theme="dark"] .status-pill.warn {
+  background: rgba(215, 163, 29, .18);
+  color: #ffd977;
+}
+
+html[data-theme="dark"] .status-pill.info {
+  background: rgba(29, 143, 191, .18);
+  color: #7fd8fb;
+}
+
+html[data-theme="dark"] .form-message.error,
+html[data-theme="dark"] .module-message.error,
+html[data-theme="dark"] .mini-button.danger {
+  color: #ff9b9b;
+}
+
+html[data-theme="dark"] .form-message.success,
+html[data-theme="dark"] .module-message.success {
+  color: #72f0a0;
+}
+
+html[data-theme="dark"] .skeleton-row {
+  background: linear-gradient(90deg, #10261f, #17372d, #10261f);
+  background-size: 200% 100%;
+}
+
+html[data-theme="dark"] .main-nav.open,
+html[data-theme="dark"] .header-actions.open {
+  background: #0b1713;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1968,8 +2177,14 @@ textarea.invalid {
     justify-items: start;
   }
 
+  .employee-actions,
   .employee-header .secondary-button {
     width: 100%;
+  }
+
+  .employee-actions {
+    display: grid;
+    grid-template-columns: 42px 1fr;
   }
 
   .product-toolbar {

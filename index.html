@@ -6,7 +6,14 @@
     <title>Flow ERP | Integra. Organiza. Faz sua empresa fluir.</title>
     <meta name="description" content="Flow ERP integra setores, organiza processos e centraliza informações para empresas que precisam operar com clareza e produtividade.">
     <link rel="icon" href="assets/flow-logo.png">
-    <link rel="stylesheet" href="styles.css?v=20260827-4">
+    <script>
+      (() => {
+        const savedTheme = localStorage.getItem("flow.erp.theme");
+        const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+        document.documentElement.dataset.theme = savedTheme || (prefersDark ? "dark" : "light");
+      })();
+    </script>
+    <link rel="stylesheet" href="styles.css?v=20260909-1">
   </head>
   <body>
     <div class="app-shell">
@@ -29,6 +36,9 @@
         </nav>
 
         <div class="header-actions">
+          <button class="icon-button theme-toggle" type="button" data-theme-toggle aria-label="Alternar tema" title="Alternar tema">
+            <i data-lucide="moon"></i>
+          </button>
           <button class="text-button" type="button" data-view-link="login">Entrar</button>
           <button class="text-button" type="button" data-view-link="employee-login">Acesso Funcionário</button>
           <button class="primary-button" type="button" data-view-link="signup">
@@ -287,6 +297,7 @@
         <section class="view auth-view" data-view="login" aria-label="Login Flow ERP">
           <div class="auth-card">
             <button class="icon-button back-home" type="button" data-view-link="marketing" aria-label="Voltar ao site"><i data-lucide="arrow-left"></i></button>
+            <button class="icon-button auth-theme-toggle" type="button" data-theme-toggle aria-label="Alternar tema" title="Alternar tema"><i data-lucide="moon"></i></button>
             <img src="assets/flow-logo.png" alt="Flow ERP">
             <h1>Bem-vindo à Flow</h1>
             <form data-form="login" novalidate>
@@ -311,6 +322,7 @@
         <section class="view auth-view" data-view="signup" aria-label="Criação de conta Flow ERP">
           <div class="auth-card wide-auth">
             <button class="icon-button back-home" type="button" data-view-link="marketing" aria-label="Voltar ao site"><i data-lucide="arrow-left"></i></button>
+            <button class="icon-button auth-theme-toggle" type="button" data-theme-toggle aria-label="Alternar tema" title="Alternar tema"><i data-lucide="moon"></i></button>
             <img src="assets/flow-logo.png" alt="Flow ERP">
             <h1>Criar minha conta</h1>
             <form data-form="signup" novalidate>
@@ -333,6 +345,7 @@
         <section class="view auth-view" data-view="employee-login" aria-label="Acesso do funcionário Flow ERP">
           <div class="auth-card">
             <button class="icon-button back-home" type="button" data-view-link="marketing" aria-label="Voltar ao site"><i data-lucide="arrow-left"></i></button>
+            <button class="icon-button auth-theme-toggle" type="button" data-theme-toggle aria-label="Alternar tema" title="Alternar tema"><i data-lucide="moon"></i></button>
             <img src="assets/flow-logo.png" alt="Flow ERP">
             <h1>Acesso Funcionário</h1>
             <form data-form="employee-login" novalidate>
@@ -347,6 +360,7 @@
 
         <section class="view auth-view" data-view="employee-password" aria-label="Criar nova senha do funcionário">
           <div class="auth-card">
+            <button class="icon-button auth-theme-toggle" type="button" data-theme-toggle aria-label="Alternar tema" title="Alternar tema"><i data-lucide="moon"></i></button>
             <img src="assets/flow-logo.png" alt="Flow ERP">
             <h1>Crie sua nova senha</h1>
             <form data-form="employee-password" novalidate>
@@ -365,7 +379,10 @@
               <p>Portal do funcionário</p>
               <h1>Olá, <span data-employee-name>colaborador</span></h1>
             </div>
-            <button class="secondary-button" type="button" data-employee-logout><i data-lucide="log-out"></i>Sair</button>
+            <div class="employee-actions">
+              <button class="icon-button theme-toggle" type="button" data-theme-toggle aria-label="Alternar tema" title="Alternar tema"><i data-lucide="moon"></i></button>
+              <button class="secondary-button" type="button" data-employee-logout><i data-lucide="log-out"></i>Sair</button>
+            </div>
           </header>
           <main class="employee-main" data-employee-portal-content></main>
         </section>
@@ -394,6 +411,7 @@
                 <h1 data-module-title>Tenha uma excelente gestão hoje.</h1>
               </div>
               <div class="erp-actions">
+                <button class="icon-button theme-toggle" type="button" data-theme-toggle aria-label="Alternar tema" title="Alternar tema"><i data-lucide="moon"></i></button>
                 <button class="icon-button" type="button" aria-label="Notificações" data-top-action="notifications"><i data-lucide="bell"></i></button>
                 <button class="icon-button" type="button" aria-label="Perfil" data-top-action="profile"><i data-lucide="circle-user-round"></i></button>
                 <button class="icon-button" type="button" aria-label="Configurações" data-module-shortcut="settings"><i data-lucide="settings"></i></button>
@@ -457,7 +475,7 @@
       <div data-app-dialog-content></div>
     </dialog>
 
-    <script src="assets/lucide.min.js?v=20260827-4"></script>
-    <script src="app.js?v=20260827-4"></script>
+    <script src="assets/lucide.min.js?v=20260909-1"></script>
+    <script src="app.js?v=20260909-1"></script>
   </body>
 </html>

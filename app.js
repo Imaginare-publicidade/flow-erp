@@ -26,6 +26,7 @@ const stores = [
 
 const sessionKey = "flow.erp.session";
 const employeeSessionKey = "flow.erp.employeeSession";
+const themeKey = "flow.erp.theme";
 let dbPromise;
 let appState = {
   currentUser: null,
@@ -33,6 +34,7 @@ let appState = {
   currentModule: "dashboard",
   currentEmployee: null
 };
+const chartState = {};
 
 const moduleInfo = {
   dashboard: { title: "Tenha uma excelente gestão hoje." },
@@ -254,6 +256,33 @@ function toast(message) {
   el.classList.add("show");
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => el.classList.remove("show"), 2600);
+}
+
+function currentTheme() {
+  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+}
+
+function syncThemeControls() {
+  const isDark = currentTheme() === "dark";
+  document.querySelectorAll("[data-theme-toggle]").forEach((button) => {
+    const label = isDark ? "Ativar modo claro" : "Ativar modo escuro";
+    button.setAttribute("aria-label", label);
+    button.setAttribute("title", label);
+    button.innerHTML = `<i data-lucide="${isDark ? "sun" : "moon"}"></i>`;
+  });
+  initIcons();
+}
+
+function applyTheme(theme, persist = true) {
+  const normalized = theme === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = normalized;
+  if (persist) localStorage.setItem(themeKey, normalized);
+  syncThemeControls();
+  redrawCharts();
+}
+
+function toggleTheme() {
+  applyTheme(currentTheme() === "dark" ? "light" : "dark");
 }
 
 async function hashPassword(value) {
@@ -2008,6 +2037,13 @@ async function privacyRequest(type) {
 function drawChart(canvasId, labels, revenue, expenses) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
+  chartState[canvasId] = { labels, revenue, expenses };
+  const styles = getComputedStyle(document.documentElement);
+  const lineColor = styles.getPropertyValue("--line").trim() || "#dce5e0";
+  const mutedColor = styles.getPropertyValue("--muted").trim() || "#6e7a75";
+  const pointFill = styles.getPropertyValue("--white").trim() || "#fff";
+  const greenColor = styles.getPropertyValue("--green").trim() || "#21e344";
+  const warningColor = styles.getPropertyValue("--warning").trim() || "#d7a31d";
   const ctx = canvas.getContext("2d");
   const width = canvas.width;
   const height = canvas.height;
@@ -2020,8 +2056,8 @@ function drawChart(canvasId, labels, revenue, expenses) {
   const xStep = (width - padding * 2) / Math.max(labels.length - 1, 1);
   const y = (value) => height - padding - (value / max) * (height - padding * 2);
 
-  ctx.strokeStyle = "#dce5e0";
-  ctx.fillStyle = "#6e7a75";
+  ctx.strokeStyle = lineColor;
+  ctx.fillStyle = mutedColor;
   for (let i = 0; i < 4; i += 1) {
     const lineY = padding + i * ((height - padding * 2) / 3);
     ctx.beginPath();
@@ -2048,7 +2084,7 @@ function drawChart(canvasId, labels, revenue, expenses) {
     values.forEach((value, index) => {
       const x = padding + index * xStep;
       const pointY = y(value);
-      ctx.fillStyle = "#fff";
+      ctx.fillStyle = pointFill;
       ctx.beginPath();
       ctx.arc(x, pointY, 6, 0, Math.PI * 2);
       ctx.fill();
@@ -2056,8 +2092,14 @@ function drawChart(canvasId, labels, revenue, expenses) {
     });
   };
 
-  drawSeries(expenses, "#d7a31d");
-  drawSeries(revenue, "#21e344");
+  drawSeries(expenses, warningColor);
+  drawSeries(revenue, greenColor);
+}
+
+function redrawCharts() {
+  Object.entries(chartState).forEach(([canvasId, state]) => {
+    drawChart(canvasId, state.labels, state.revenue, state.expenses);
+  });
 }
 
 function openPolicy(key) {
@@ -2174,6 +2216,11 @@ function bindEvents() {
   });
 
   document.addEventListener("click", async (event) => {
+    if (event.target.closest("[data-theme-toggle]")) {
+      toggleTheme();
+      return;
+    }
+
     const viewLink = event.target.closest("[data-view-link]");
     if (viewLink) {
       nav.classList.remove("open");
@@ -2326,6 +2373,7 @@ window.addEventListener("unhandledrejection", (event) => {
 
 document.addEventListener("DOMContentLoaded", () => {
   bindEvents();
+  applyTheme(currentTheme(), false);
   initReveal();
   initIcons();
   drawChart("revenueChart", ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"], [52, 74, 68, 96, 88, 112], [34, 42, 46, 58, 52, 66]);
